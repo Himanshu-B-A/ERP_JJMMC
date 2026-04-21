@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>JJMMC ERP · Principal</title>
+<link rel="stylesheet" href="/css/style.css"/>
+<style>
+/* Principal portal page-specific overrides (global UI in style.css) */
+</style>
+</head>
+<body>
+<div class="shell">
+<aside class="sidebar">
+  <div class="brand">
+    <div class="brand-logo">JJ</div>
+    <div><h1 style="font-size:14px">Principal Portal</h1><small>JJMMC ERP</small></div>
+  </div>
+  <nav class="nav" id="sideNav">
+    <div style="padding:4px 0">
+      <div style="font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--muted);padding:10px 16px 4px;text-transform:uppercase">Overview</div>
+      <a href="#" data-sec="dashboard" class="active">Dashboard</a>
+      <a href="#" data-sec="students">Students</a>
+      <a href="#" data-sec="faculty">Faculty</a>
+      <a href="#" data-sec="attendance">Attendance</a>
+      <a href="#" data-sec="results">Exam Results</a>
+      <a href="#" data-sec="fees">Fees Overview</a>
+      <a href="#" data-sec="placement">Placement</a>
+      <a href="#" data-sec="notices">Notices</a>
+      <a href="#" data-sec="reports">MIS Reports</a>
+    </div>
+  </nav>
+</aside>
+<section class="main">
+  <div class="topbar">
+    <div class="crumbs" id="crumb">Dashboard</div>
+    <div class="who">
+      <div class="avatar" id="avatar">P</div>
+      <div style="line-height:1.1">
+        <div id="whoName" style="font-weight:700;font-size:13px">Principal</div>
+        <div style="color:var(--muted);font-size:11px">principal</div>
+      </div>
+      <button class="btn small secondary" id="logoutBtn">Logout</button>
+    </div>
+  </div>
+  <div class="content" id="appContent"><div class="empty-msg">Loading…</div></div>
+</section>
+</div>
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal"><h3 id="modalTitle">Form</h3><div id="modalBody"></div>
+    <div class="modal-actions"><button class="btn small secondary" id="modalCancel">Cancel</button><button class="btn small" id="modalSubmit">Save</button></div>
+  </div>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+const API=async(url,opts={})=>{const r=await fetch(url,{headers:{'Content-Type':'application/json'},...opts});const j=await r.json().catch(()=>({}));if(!r.ok){alert(j.error||'Error');throw new Error(j.error);}return j;};
+const fmt=v=>v==null?'—':v;
+const fmtDate=d=>d?d.split('T')[0]:'—';
+const badge=(t,c='gray')=>`<span class="badge ${c}">${t}</span>`;
+const statusBadge=s=>{const m={present:'green',absent:'red',published:'green',open:'green',active:'green',closed:'red',F:'red',A:'green','A+':'green'};return badge(s,m[s]||'blue');};
+let modalCb=null;
+function openModal(title,html,cb){$('modalTitle').textContent=title;$('modalBody').innerHTML=html;modalCb=cb;$('modalOverlay').classList.add('open');}
+function closeModal(){$('modalOverlay').classList.remove('open');}
+$('modalCancel').addEventListener('click',closeModal);
+$('modalOverlay').addEventListener('click',e=>{if(e.target.classList.contains('modal-overlay'))closeModal();});
+$('modalSubmit').addEventListener('click',()=>{if(modalCb)modalCb();});
+function formData(){const fd={};document.querySelectorAll('#modalBody input,#modalBody select,#modalBody textarea').forEach(i=>{if(i.name)fd[i.name]=i.value.trim();});return fd;}
+
+let currentSection='dashboard';
+document.getElementById('sideNav').addEventListener('click',e=>{
+  const a=e.target.closest('[data-sec]');if(!a)return;e.preventDefault();
+  document.querySelectorAll('#sideNav a').forEach(x=>x.classList.remove('active'));
+  a.classList.add('active');$('crumb').textContent=a.textContent.trim();
+  currentSection=a.dataset.sec;loadSection(currentSection);
+});
+const sections={};
+
+sections.dashboard = async c => {
+  const d=await API('/api/principal/stats');
+  const t=d.totals;
+  c.innerHTML=`
+    <div class="page-title"><h2>Principal's Dashboard</h2></div>
+    <div class="grid cols-4">
+      <div class="card"><div class="sub">Total Students</div><div class="value">${t.students}</div></div>
+      <div class="card"><div class="sub">Faculty</div><div class="value">${t.faculty}</div></div>
+      <div class="card"><div class="sub">Departments</div><div class="value">${t.departments}</div></div>
+      <div class="card"><div class="sub">Courses</div><div class="value">${t.courses}</div></div>
+    </div>
+    <div class="grid cols-2" style="margin-top:14px">
+      <div class="card">
+        <div class="sub">Fees Collected</div>
+        <div style="font-size:28px;font-weight:500;color:var(--success)">₹${t.fees_collected?.toLocaleString()}</div>
+      </div>
+      <div class="card">
+        <div class="sub">Open Placement Drives</div>
+        <div class="value">${t.open_drives}</div>
+      </div>
+    </div>
+    <div class="grid cols-2" style="margin-top:14px">
+      <div class="card">
+        <h3 style="margin:0 0 10px;font-size:14px">Enrollment by Department</h3>
+        ${d.department_stats.map(ds=>`<div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:13px">
+          <span>${fmt(ds.department)||'Unknown'}</span><strong>${ds.students}</strong></div>`).join('')||'<div style="color:var(--muted);font-size:13px">No data</div>'}
+      </div>
+      <div class="card">
+        <h3 style="margin:0 0 10px;font-size:14px">Recent Results</h3>
+        <table><thead><tr><th>Student</th><th>Exam</th><th>Grade</th></tr></thead>
+        <tbody>${d.recent_results.map(r=>`<tr><td>${r.full_name}</td><td>${r.exam_title}</td><td>${badge(r.grade,'blue')}</td></tr>`).join('')||'<tr><td colspan="3" class="empty-msg">None</td></tr>'}</tbody></table>
+      </div>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <h3 style="margin:0 0 10px;font-size:14px">Notices</h3>
+      ${d.notices.map(n=>`<div style="padding:8px 0;border-bottom:1px solid var(--border)"><strong>${n.title}</strong><br><span style="font-size:12px;color:var(--muted)">${fmtDate(n.created_at)}</span></div>`).join('')||'<div class="empty-msg" style="padding:12px">No notices</div>'}
+    </div>`;
+};
+
+sections.students = async c => {
+  let q='';
+  const render=async()=>{
+    const d=await API(`/api/principal/students?q=${encodeURIComponent(q)}`);
+    c.innerHTML=`
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><h2 style="margin:0">Students (${d.items.length})</h2></div>
+      <div class="filter-bar"><input placeholder="Search name/roll…" id="stuSearch" value="${q}" style="flex:1;max-width:280px"/></div>
+      <div class="card" style="padding:0;overflow:auto">
+      <table><thead><tr><th>Roll No</th><th>Name</th><th>Dept</th><th>Sem</th><th>Phone</th><th>Email</th></tr></thead>
+      <tbody>${d.items.map(s=>`<tr><td>${fmt(s.roll_no)}</td><td>${s.full_name}</td><td>${fmt(s.department)}</td><td>${fmt(s.semester)}</td><td>${fmt(s.phone)}</td><td>${fmt(s.email)}</td></tr>`).join('')||'<tr><td colspan="6" class="empty-msg">None</td></tr>'}
+      </tbody></table></div>`;
+    $('stuSearch').addEventListener('input',e=>{q=e.target.value;render();});
+  };
+  await render();
+};
+
+sections.faculty = async c => {
+  const d=await API('/api/principal/faculty');
+  c.innerHTML=`
+    <div style="margin-bottom:16px"><h2 style="margin:0">Faculty (${d.items.length})</h2></div>
+    <div class="card" style="padding:0;overflow:auto">
+    <table><thead><tr><th>Emp Code</th><th>Name</th><th>Department</th><th>Designation</th><th>Email</th></tr></thead>
+    <tbody>${d.items.map(f=>`<tr><td>${fmt(f.emp_code)}</td><td>${f.full_name}</td><td>${fmt(f.department)}</td><td>${fmt(f.designation)}</td><td>${fmt(f.email)}</td></tr>`).join('')||'<tr><td colspan="5" class="empty-msg">None</td></tr>'}
+    </tbody></table></div>`;
+};
+
+sections.attendance = async c => {
+  const d=await API('/api/principal/attendance');
+  c.innerHTML=`
+    <div style="margin-bottom:16px"><h2 style="margin:0">Attendance Overview</h2></div>
+    ${d.low_attendance.length?`<div class="alert warning">⚠️ ${d.low_attendance.length} student(s) below 75% attendance</div>`:''}
+    <div class="grid cols-2">
+      <div class="card">
+        <h3 style="margin:0 0 10px;font-size:14px">By Course</h3>
+        <table><thead><tr><th>Course</th><th>Total</th><th>Rate</th></tr></thead>
+        <tbody>${d.by_course.map(r=>`<tr><td>${r.course_code}</td><td>${r.total}</td>
+          <td><span style="color:${r.rate<75?'var(--danger)':'var(--success)'};font-weight:500">${r.rate||0}%</span></td>
+        </tr>`).join('')||'<tr><td colspan="3" class="empty-msg">No data</td></tr>'}</tbody></table>
+      </div>
+      <div class="card">
+        <h3 style="margin:0 0 10px;font-size:14px">Low Attendance Students</h3>
+        <table><thead><tr><th>Name</th><th>Roll</th><th>%</th></tr></thead>
+        <tbody>${d.low_attendance.map(s=>`<tr><td>${s.full_name}</td><td>${fmt(s.roll_no)}</td><td style="color:var(--danger);font-weight:500">${s.pct}%</td></tr>`).join('')||'<tr><td colspan="3" class="empty-msg">All good</td></tr>'}</tbody></table>
+      </div>
+    </div>`;
+};
+
+sections.results = async c => {
+  const d=await API('/api/principal/results');
+  c.innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><h2 style="margin:0">Exam Results</h2></div>
+    <div class="filter-bar">
+      <select id="examFilter"><option value="">All Exams</option>${d.exams.map(e=>`<option value="${e.id}">${e.title}</option>`).join('')}</select>
+      <button class="btn small" id="filterResultsBtn">Filter</button>
+    </div>
+    <div id="resultsTable" class="card" style="padding:0;overflow:auto">
+    <table><thead><tr><th>Student</th><th>Roll</th><th>Exam</th><th>Marks</th><th>Total</th><th>Grade</th></tr></thead>
+    <tbody>${d.results.map(r=>`<tr><td>${r.full_name}</td><td>${fmt(r.roll_no)}</td><td>${r.exam_title}</td>
+      <td>${r.marks_obtained}</td><td>${r.total_marks}</td>
+      <td>${badge(r.grade,r.grade==='F'?'red':r.grade.includes('A')?'green':'blue')}</td>
+    </tr>`).join('')||'<tr><td colspan="6" class="empty-msg">No published results</td></tr>'}
+    </tbody></table></div>`;
+  $('filterResultsBtn').addEventListener('click',async()=>{
+    const eid=$('examFilter').value;
+    const d2=await API(`/api/principal/results${eid?'?exam_id='+eid:''}`);
+    $('resultsTable').innerHTML=`<table><thead><tr><th>Student</th><th>Roll</th><th>Exam</th><th>Marks</th><th>Total</th><th>Grade</th></tr></thead><tbody>
+      ${d2.results.map(r=>`<tr><td>${r.full_name}</td><td>${fmt(r.roll_no)}</td><td>${r.exam_title}</td><td>${r.marks_obtained}</td><td>${r.total_marks}</td><td>${badge(r.grade,r.grade==='F'?'red':r.grade.includes('A')?'green':'blue')}</td></tr>`).join('')||'<tr><td colspan="6" class="empty-msg">None</td></tr>'}
+    </tbody></table>`;
+  });
+};
+
+sections.fees = async c => {
+  const d=await API('/api/principal/fees');
+  c.innerHTML=`
+    <div style="margin-bottom:16px"><h2 style="margin:0">Fees Overview</h2></div>
+    <div class="grid cols-2" style="margin-bottom:14px">
+      <div class="card"><div class="sub">Total Collected</div><div style="font-size:28px;font-weight:500;color:var(--success)">₹${(d.total_paid||0).toLocaleString()}</div></div>
+      <div class="card"><h3 style="margin:0 0 10px;font-size:14px">By Fee Type</h3>
+        ${d.by_type.map(t=>`<div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:13px"><span>${t.fee_type}</span><strong>₹${(t.total||0).toLocaleString()}</strong></div>`).join('')}
+      </div>
+    </div>
+    <div class="card" style="padding:0;overflow:auto">
+    <table><thead><tr><th>Student</th><th>Roll No</th><th>Fee Type</th><th>Amount</th><th>Date</th></tr></thead>
+    <tbody>${d.recent.map(p=>`<tr><td>${p.full_name}</td><td>${fmt(p.roll_no)}</td><td>${p.fee_type}</td><td>₹${p.amount?.toLocaleString()}</td><td>${fmtDate(p.paid_on)}</td></tr>`).join('')||'<tr><td colspan="5" class="empty-msg">None</td></tr>'}
+    </tbody></table></div>`;
+};
+
+sections.placement = async c => {
+  const d=await API('/api/principal/placement');
+  c.innerHTML=`
+    <div style="margin-bottom:16px"><h2 style="margin:0">Placement Overview</h2></div>
+    <div class="card" style="margin-bottom:14px">
+      <div class="sub">Total Students Placed</div>
+      <div style="font-size:32px;font-weight:500;color:var(--success)">${d.total_placed}</div>
+    </div>
+    <div class="card" style="padding:0;overflow:auto">
+    <table><thead><tr><th>Company</th><th>Role</th><th>Package</th><th>Date</th><th>Applications</th><th>Status</th></tr></thead>
+    <tbody>${d.drives.map(dr=>`<tr><td>${dr.company}</td><td>${dr.role}</td><td>${dr.package_lpa?dr.package_lpa+' LPA':'—'}</td>
+      <td>${fmtDate(dr.drive_date)}</td><td>${dr.applications}</td>
+      <td>${badge(dr.status,dr.status==='open'?'green':dr.status==='completed'?'blue':'gray')}</td>
+    </tr>`).join('')||'<tr><td colspan="6" class="empty-msg">None</td></tr>'}
+    </tbody></table></div>`;
+};
+
+sections.notices = async c => {
+  const d=await API('/api/principal/notices');
+  c.innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><h2 style="margin:0">Notices</h2>
+      <button class="btn small" id="addNoticeBtn">+ Add Notice</button></div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      ${d.items.map(n=>`<div class="card">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+          <strong>${n.title}</strong><span style="font-size:11px;color:var(--muted)">${fmtDate(n.created_at)} · ${badge(n.audience,'gray')}</span>
+        </div>
+        <div style="font-size:13px;color:var(--muted)">${n.body}</div>
+      </div>`).join('')||'<div class="empty-msg">No notices</div>'}
+    </div>`;
+  $('addNoticeBtn').addEventListener('click',()=>{
+    openModal('Post Notice',`<div class="form-grid cols1">
+      <div class="form-group"><label>Title *</label><input name="title" required/></div>
+      <div class="form-group"><label>Body *</label><textarea name="body" required rows="4"></textarea></div>
+      <div class="form-group"><label>Audience</label><select name="audience"><option value="all">All</option><option value="student">Students</option><option value="faculty">Faculty</option><option value="parent">Parents</option></select></div>
+    </div>`,
+    async()=>{ await API('/api/principal/notices',{method:'POST',body:JSON.stringify(formData())}); closeModal(); loadSection('notices'); });
+  });
+};
+
+sections.reports = async c => {
+  const d=await API('/api/principal/reports');
+  c.innerHTML=`
+    <div class="page-title"><h2>MIS Reports</h2></div>
+    <div class="grid cols-2">
+      <div class="card"><h3 style="margin:0 0 10px;font-size:14px">Enrollment by Department</h3>
+        <table><thead><tr><th>Department</th><th>Students</th></tr></thead>
+        <tbody>${d.enrollment_by_dept.map(r=>`<tr><td>${fmt(r.department)||'Unknown'}</td><td>${r.count}</td></tr>`).join('')||'<tr><td colspan="2" class="empty-msg">No data</td></tr>'}</tbody></table>
+      </div>
+      <div class="card"><h3 style="margin:0 0 10px;font-size:14px">Monthly Fee Collection</h3>
+        <table><thead><tr><th>Month</th><th>Amount</th></tr></thead>
+        <tbody>${d.fee_monthly.map(r=>`<tr><td>${r.month}</td><td>₹${r.total?.toLocaleString()}</td></tr>`).join('')||'<tr><td colspan="2" class="empty-msg">No data</td></tr>'}</tbody></table>
+      </div>
+      <div class="card"><h3 style="margin:0 0 10px;font-size:14px">Grade Distribution</h3>
+        <table><thead><tr><th>Grade</th><th>Count</th></tr></thead>
+        <tbody>${d.grade_stats.map(r=>`<tr><td>${badge(r.grade,'blue')}</td><td>${r.count}</td></tr>`).join('')||'<tr><td colspan="2" class="empty-msg">No data</td></tr>'}</tbody></table>
+      </div>
+      <div class="card"><h3 style="margin:0 0 10px;font-size:14px">Enrollment by Semester</h3>
+        <table><thead><tr><th>Semester</th><th>Students</th></tr></thead>
+        <tbody>${d.enrollment_by_sem.map(r=>`<tr><td>Sem ${r.semester}</td><td>${r.count}</td></tr>`).join('')||'<tr><td colspan="2" class="empty-msg">No data</td></tr>'}</tbody></table>
+      </div>
+    </div>`;
+};
+
+function loadSection(sec){
+  const c=$('appContent');c.innerHTML='<div class="empty-msg">Loading…</div>';
+  const fn=sections[sec];if(fn)fn(c);else c.innerHTML=`<div class="empty-msg">${sec} coming soon.</div>`;
+}
+fetch('/api/me').then(r=>r.json()).then(d=>{
+  if(!d.user)return location.href='/login.html';
+  $('whoName').textContent=d.user.full_name;
+  $('avatar').textContent=d.user.full_name.charAt(0).toUpperCase();
+});
+$('logoutBtn').addEventListener('click',async()=>{ await fetch('/api/logout',{method:'POST'}); location.href='/login.html'; });
+loadSection('dashboard');
+</script>
+</body>
+</html>

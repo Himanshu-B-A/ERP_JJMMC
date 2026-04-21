@@ -1,0 +1,1840 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>JJMMC Medical College · Admin</title>
+<link rel="stylesheet" href="/css/style.css"/>
+<style>
+/* Admin portal page-specific overrides (global UI in style.css) */
+</style>
+</head>
+<body>
+<div class="shell">
+<aside class="sidebar">
+  <div class="brand">
+    <div class="brand-logo">JJ</div>
+    <div><h1 style="font-size:14px">Admin Portal</h1><small>JJMMC Medical College</small></div>
+  </div>
+  <nav class="nav" id="sideNav">
+    <div class="nav-group">
+      <div class="nav-label">Overview</div>
+      <a href="#" data-sec="dashboard" class="active">Dashboard</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-label">Academics</div>
+      <a href="#" data-sec="students">MBBS Students</a>
+      <a href="#" data-sec="batches">Batches &amp; Subjects</a>
+      <a href="#" data-sec="attendance">Attendance (CBME 75%)</a>
+      <a href="#" data-sec="exams">Professional Exams</a>
+      <a href="#" data-sec="onlineExams">Online MCQ Exam</a>
+      <a href="#" data-sec="studyMaterial">Study Material</a>
+      <a href="#" data-sec="lectures">Lecture Management</a>
+      <a href="#" data-sec="lms">LMS / e-Learning</a>
+      <a href="#" data-sec="timetable">Timetable</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-label">Clinical (Medical)</div>
+      <a href="#" data-sec="clinicalPostings">Clinical Postings</a>
+      <a href="#" data-sec="caseLogs">Case Logbook</a>
+      <a href="#" data-sec="procedureLogs">Procedure Logbook</a>
+      <a href="#" data-sec="cbmeReport">CBME Compliance</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-label">Finance</div>
+      <a href="#" data-sec="fees">Fees Management</a>
+      <a href="#" data-sec="feeStructures">Fee Structures</a>
+      <a href="#" data-sec="transactions">Income & Expenses</a>
+      <a href="#" data-sec="payroll">HRM & Payroll</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-label">HR & Admin</div>
+      <a href="#" data-sec="users">User Management</a>
+      <a href="#" data-sec="employees">Employees</a>
+      <a href="#" data-sec="departments">Departments</a>
+      <a href="#" data-sec="contacts">Contact Management</a>
+      <a href="#" data-sec="permissions">Roles & Permissions</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-label">Communications</div>
+      <a href="#" data-sec="notifications">Notifications</a>
+      <a href="#" data-sec="notices">Notices</a>
+      <a href="#" data-sec="enquiries">Enquiry & Follow-up</a>
+      <a href="#" data-sec="campaigns">Marketing Campaign</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-label">Facilities</div>
+      <a href="#" data-sec="hostel">Hostel Management</a>
+      <a href="#" data-sec="transport">Transport</a>
+      <a href="#" data-sec="library">Library</a>
+      <a href="#" data-sec="store">Store Management</a>
+      <a href="#" data-sec="assets">Asset Management</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-label">Advanced</div>
+      <a href="#" data-sec="placement">Residency / Placement</a>
+      <a href="#" data-sec="clients">Hospital Tie-ups / Clients</a>
+      <a href="#" data-sec="devices">Biometrics & RFID</a>
+      <a href="#" data-sec="reminders">Scheduler & Reminders</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-label">System</div>
+      <a href="#" data-sec="schools">Multi-Campus (Hospital + College)</a>
+      <a href="#" data-sec="reports">MIS Reports</a>
+      <a href="#" data-sec="logs">Activity Logs</a>
+      <a href="#" data-sec="export">Data Export/Import</a>
+      <a href="#" data-sec="backup">Backup & Recovery</a>
+      <a href="#" data-sec="settings">School Settings</a>
+    </div>
+  </nav>
+</aside>
+<section class="main">
+  <div class="topbar">
+    <div class="crumbs" id="crumb">Dashboard</div>
+    <div class="who">
+      <div class="avatar" id="avatar">A</div>
+      <div style="line-height:1.1">
+        <div id="whoName" style="font-weight:700;font-size:13px">Admin</div>
+        <div style="color:var(--muted);font-size:11px">System Admin</div>
+      </div>
+      <button class="btn small secondary" id="logoutBtn">Logout</button>
+    </div>
+  </div>
+  <div class="content" id="appContent">
+    <div class="empty-msg">Loading...</div>
+  </div>
+</section>
+</div>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal" id="modalBox">
+    <h3 id="modalTitle">Form</h3>
+    <div id="modalBody"></div>
+    <div class="modal-actions">
+      <button class="btn small secondary" id="modalCancel">Cancel</button>
+      <button class="btn small" id="modalSubmit">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const API = async (url, opts={}) => {
+  const r = await fetch(url, { headers:{'Content-Type':'application/json'}, ...opts });
+  const j = await r.json().catch(()=>({}));
+  if (!r.ok) { alert(j.error || 'Error'); throw new Error(j.error); }
+  return j;
+};
+const fmt = v => v == null ? '—' : v;
+const fmtDate = d => d ? d.split('T')[0] : '—';
+const badge = (text, type='gray') => `<span class="badge ${type}">${text}</span>`;
+const statusBadge = s => {
+  const m = {active:'green',open:'green',published:'green',paid:'green',PAID:'green',
+    inactive:'gray',closed:'red',dropped:'red',draft:'yellow',pending:'yellow',
+    'in-progress':'blue',issued:'blue','follow-up':'yellow',converted:'green',new:'blue'};
+  return badge(s, m[s?.toLowerCase()]||'gray');
+};
+
+let currentSection = 'dashboard';
+let modalCallback = null;
+
+// NAVIGATION
+document.getElementById('sideNav').addEventListener('click', e => {
+  const a = e.target.closest('[data-sec]');
+  if (!a) return;
+  e.preventDefault();
+  document.querySelectorAll('#sideNav a').forEach(x=>x.classList.remove('active'));
+  a.classList.add('active');
+  $('crumb').textContent = a.textContent.trim();
+  currentSection = a.dataset.sec;
+  loadSection(currentSection);
+});
+
+// MODAL
+function openModal(title, bodyHtml, onSubmit) {
+  $('modalTitle').textContent = title;
+  $('modalBody').innerHTML = bodyHtml;
+  modalCallback = onSubmit;
+  $('modalOverlay').classList.add('open');
+}
+function closeModal() { $('modalOverlay').classList.remove('open'); }
+$('modalCancel').addEventListener('click', closeModal);
+$('modalOverlay').addEventListener('click', e => { if(e.target===$('modalOverlay')) closeModal(); });
+$('modalSubmit').addEventListener('click', () => { if(modalCallback) modalCallback(); });
+
+function formData(formId) {
+  const el = document.getElementById(formId) || document.querySelector('.modal form');
+  const fd = {};
+  if (!el) {
+    document.querySelectorAll('#modalBody input,#modalBody select,#modalBody textarea').forEach(i=>{
+      if(i.name) fd[i.name]=i.type==='number'?Number(i.value):i.value.trim();
+    });
+    return fd;
+  }
+  new FormData(el).forEach((v,k)=>{ fd[k]=v; });
+  return fd;
+}
+
+// ─────────────────────────────────────────────────────────────────
+function loadSection(sec) {
+  const c = $('appContent');
+  c.innerHTML = '<div class="empty-msg">Loading…</div>';
+  const fn = sections[sec];
+  if (fn) fn(c); else c.innerHTML = `<div class="empty-msg">Section "${sec}" coming soon.</div>`;
+}
+
+// ─────────────────────────────────────────────────────────────────
+// SECTIONS
+// ─────────────────────────────────────────────────────────────────
+const sections = {};
+
+// ── DASHBOARD ────────────────────────────────────────────────────
+sections.dashboard = async (c) => {
+  const d = await API('/api/admin/stats');
+  const t = d.totals;
+  c.innerHTML = `
+    <div class="page-title"><h2>Medical College Overview</h2><p style="color:var(--muted);font-size:13px;margin:4px 0 0">JJMMC · MBBS Programme · NMC recognised</p></div>
+    <div class="stat-cards">
+      ${[['MBBS Students',t.students,'🩺'],['Faculty (Doctors)',t.faculty,'👨‍⚕️'],['Parents',t.parents,'👪'],
+         ['Medical Depts',t.departments,'🏥'],['Subjects (CBME)',t.courses,'📚'],['MBBS Batches',t.batches,'🗂️'],
+         ['Admission Enquiries',t.enquiries,'📋'],['Library Books',t.library_books,'📖'],
+         ['Medical Assets',t.assets,'🖥️'],['Residency Drives',t.open_drives,'💼'],
+         ['Fees Collected','₹'+t.fees_paid?.toLocaleString(),'💰'],
+         ['Net Balance','₹'+(t.total_income-t.total_expense)?.toLocaleString(),'📊'],
+      ].map(([l,v,i])=>`<div class="stat-card"><div class="label">${i} ${l}</div><div class="value" style="font-size:${String(v).length>6?'18px':'26px'}">${v}</div></div>`).join('')}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div class="card">
+        <h3 style="margin:0 0 12px;font-size:14px">Recent Users</h3>
+        <table><thead><tr><th>Name</th><th>Role</th><th>Joined</th></tr></thead><tbody>
+          ${d.recentUsers.map(u=>`<tr><td>${u.full_name}</td><td>${statusBadge(u.role)}</td><td>${fmtDate(u.created_at)}</td></tr>`).join('')}
+        </tbody></table>
+      </div>
+      <div class="card">
+        <h3 style="margin:0 0 12px;font-size:14px">Recent Activity</h3>
+        <table><thead><tr><th>User</th><th>Action</th><th>Time</th></tr></thead><tbody>
+          ${d.recentLogs.map(l=>`<tr><td>${l.full_name||'System'}</td><td>${l.action}</td><td>${fmtDate(l.created_at)}</td></tr>`).join('')}
+        </tbody></table>
+      </div>
+    </div>`;
+};
+
+// ── STUDENTS ─────────────────────────────────────────────────────
+sections.students = async (c) => {
+  let query='';
+  const render = async () => {
+    const d = await API(`/api/admin/students?q=${encodeURIComponent(query)}`);
+    c.innerHTML = `
+      <div class="section-header"><h2>Student Management <span class="badge blue">${d.total}</span></h2>
+        <button class="btn small" id="addStudentBtn">+ Add Student</button></div>
+      <div class="filter-bar">
+        <input placeholder="Search name/roll/email…" value="${query}" id="stuSearch" style="flex:1;max-width:320px"/>
+      </div>
+      <div class="card" style="padding:0;overflow:auto">
+      <table><thead><tr><th>Roll No</th><th>Name</th><th>Email</th><th>Dept</th><th>Sem</th><th>Phone</th><th>Actions</th></tr></thead>
+      <tbody>${d.students.map(s=>`<tr>
+        <td>${fmt(s.roll_no)}</td><td>${s.full_name}</td><td>${fmt(s.email)}</td>
+        <td>${fmt(s.department)}</td><td>${fmt(s.semester)}</td><td>${fmt(s.phone)}</td>
+        <td class="actions">
+          <button class="icon-btn" onclick="editStudent(${s.id},'${s.full_name.replace(/'/g,"\\'")}')">✏️</button>
+          <button class="icon-btn" onclick="deleteUser(${s.id})">🗑️</button>
+        </td>
+      </tr>`).join('')||'<tr><td colspan="7" class="empty-msg">No students found</td></tr>'}
+      </tbody></table></div>`;
+    $('stuSearch').addEventListener('input', e => { query=e.target.value; render(); });
+    $('addStudentBtn').addEventListener('click', () => addUserModal('student'));
+  };
+  await render();
+};
+
+window.deleteUser = async (id) => {
+  if (!confirm('Delete this user?')) return;
+  await API(`/api/admin/users/${id}`,{method:'DELETE'});
+  loadSection(currentSection);
+};
+window.editStudent = (id, name) => {
+  openModal(`Edit Student: ${name}`,
+    `<div class="form-grid"><div class="form-group"><label>Roll No</label><input name="roll_no" id="er"/></div>
+    <div class="form-group"><label>Department</label><select name="department" id="edept">
+      <option>CSE</option><option>ECE</option><option>MEC</option><option>CIV</option><option>MBA</option></select></div>
+    <div class="form-group"><label>Semester</label><input name="semester" type="number" min="1" max="8" id="esem"/></div>
+    <div class="form-group"><label>Phone</label><input name="phone" id="eph"/></div>
+    <div class="form-group"><label>Blood Group</label><input name="blood_group" id="ebg" placeholder="O+"/></div>
+    <div class="form-group"><label>RFID Code</label><input name="rfid_code" id="erfid"/></div>
+    </div>`,
+    async () => {
+      const fd = formData();
+      await API(`/api/admin/students/${id}/profile`,{method:'PUT',body:JSON.stringify(fd)});
+      closeModal(); loadSection('students');
+    }
+  );
+};
+
+function addUserModal(role='student') {
+  openModal(`Add ${role.charAt(0).toUpperCase()+role.slice(1)}`,
+    `<div class="form-grid">
+      <div class="form-group"><label>Username *</label><input name="username" required/></div>
+      <div class="form-group"><label>Full Name *</label><input name="full_name" required/></div>
+      <div class="form-group"><label>Email</label><input name="email" type="email"/></div>
+      <div class="form-group"><label>Password *</label><input name="password" type="password" required/></div>
+      <div class="form-group"><label>Role</label><select name="role">
+        <option value="student" ${role==='student'?'selected':''}>Student</option>
+        <option value="faculty" ${role==='faculty'?'selected':''}>Faculty</option>
+        <option value="admin" ${role==='admin'?'selected':''}>Admin</option>
+        <option value="principal" ${role==='principal'?'selected':''}>Principal</option>
+        <option value="parent" ${role==='parent'?'selected':''}>Parent</option>
+      </select></div>
+    </div>`,
+    async () => {
+      const fd = formData();
+      await API('/api/admin/users',{method:'POST',body:JSON.stringify(fd)});
+      closeModal(); loadSection(currentSection);
+    }
+  );
+}
+
+// ── USERS ────────────────────────────────────────────────────────
+sections.users = async (c) => {
+  let roleF='', q='';
+  const render = async () => {
+    const d = await API(`/api/admin/users?role=${roleF}&q=${encodeURIComponent(q)}`);
+    c.innerHTML = `
+      <div class="section-header"><h2>User Management <span class="badge blue">${d.total}</span></h2>
+        <button class="btn small" id="addUBtn">+ Add User</button></div>
+      <div class="filter-bar">
+        <input placeholder="Search…" id="uSearch" value="${q}" style="flex:1;max-width:260px"/>
+        <select id="roleFilter">
+          <option value="">All Roles</option>
+          ${['admin','principal','faculty','student','parent'].map(r=>`<option value="${r}" ${roleF===r?'selected':''}>${r}</option>`).join('')}
+        </select>
+      </div>
+      <div class="card" style="padding:0;overflow:auto">
+      <table><thead><tr><th>Username</th><th>Name</th><th>Role</th><th>Email</th><th>Status</th><th>Last Login</th><th>Actions</th></tr></thead>
+      <tbody>${d.users.map(u=>`<tr>
+        <td>${u.username}</td><td>${u.full_name}</td><td>${statusBadge(u.role)}</td>
+        <td>${fmt(u.email)}</td><td>${u.is_active?badge('Active','green'):badge('Inactive','red')}</td>
+        <td>${fmtDate(u.last_login)}</td>
+        <td class="actions">
+          <button class="icon-btn" onclick="editUserModal(${u.id},'${u.username}',${u.is_active})">✏️</button>
+          <button class="icon-btn" onclick="deleteUser(${u.id})">🗑️</button>
+        </td>
+      </tr>`).join('')||'<tr><td colspan="7" class="empty-msg">No users</td></tr>'}
+      </tbody></table></div>`;
+    $('addUBtn').addEventListener('click', ()=>addUserModal());
+    $('uSearch').addEventListener('input', e=>{ q=e.target.value; render(); });
+    $('roleFilter').addEventListener('change', e=>{ roleF=e.target.value; render(); });
+  };
+  await render();
+};
+window.editUserModal = (id, uname, active) => {
+  openModal(`Edit User: ${uname}`,
+    `<div class="form-grid">
+      <div class="form-group"><label>Full Name</label><input name="full_name"/></div>
+      <div class="form-group"><label>Email</label><input name="email" type="email"/></div>
+      <div class="form-group"><label>New Password</label><input name="password" type="password" placeholder="Leave blank to keep"/></div>
+      <div class="form-group"><label>Status</label><select name="is_active">
+        <option value="1" ${active?'selected':''}>Active</option>
+        <option value="0" ${!active?'selected':''}>Inactive</option>
+      </select></div>
+    </div>`,
+    async () => {
+      const fd = formData(); if(!fd.password) delete fd.password;
+      await API(`/api/admin/users/${id}`,{method:'PUT',body:JSON.stringify(fd)});
+      closeModal(); loadSection('users');
+    }
+  );
+};
+
+// ── DEPARTMENTS ──────────────────────────────────────────────────
+sections.departments = async (c) => {
+  const d = await API('/api/admin/departments');
+  c.innerHTML = `
+    <div class="section-header"><h2>Departments</h2>
+      <button class="btn small" id="addDeptBtn">+ Add</button></div>
+    <div class="card" style="padding:0;overflow:auto">
+    <table><thead><tr><th>Code</th><th>Name</th><th>HOD</th><th>Actions</th></tr></thead>
+    <tbody>${d.items.map(i=>`<tr><td>${i.code}</td><td>${i.name}</td><td>${fmt(i.hod)}</td>
+      <td class="actions"><button class="icon-btn" onclick="deleteDept(${i.id})">🗑️</button></td>
+    </tr>`).join('')||'<tr><td colspan="4" class="empty-msg">None</td></tr>'}
+    </tbody></table></div>`;
+  $('addDeptBtn').addEventListener('click', ()=>{
+    openModal('Add Department',
+      `<div class="form-grid">
+        <div class="form-group"><label>Code *</label><input name="code" required placeholder="CSE"/></div>
+        <div class="form-group"><label>Name *</label><input name="name" required/></div>
+        <div class="form-group cols1"><label>HOD</label><input name="hod"/></div>
+      </div>`,
+      async()=>{ await API('/api/admin/departments',{method:'POST',body:JSON.stringify(formData())}); closeModal(); loadSection('departments'); }
+    );
+  });
+};
+window.deleteDept = async id => { if(!confirm('Delete?'))return; await API(`/api/admin/departments/${id}`,{method:'DELETE'}); loadSection('departments'); };
+
+// ── BATCHES ──────────────────────────────────────────────────────
+sections.batches = async (c) => {
+  const [bd, cd] = await Promise.all([API('/api/admin/batches'), API('/api/admin/courses')]);
+  c.innerHTML = `
+    <div class="section-header"><h2>Batches & Courses</h2><button class="btn small" id="addBatchBtn">+ Add Batch</button></div>
+    <div class="tab-bar">
+      <button class="active" id="tabBatches" onclick="showTab('batches')">Batches (${bd.items.length})</button>
+      <button id="tabCourses" onclick="showTab('courses')">Courses (${cd.items.length})</button>
+    </div>
+    <div id="tabContentBatches" class="card" style="padding:0;overflow:auto">
+    <table><thead><tr><th>Code</th><th>Name</th><th>Dept</th><th>Year</th><th>Sem</th><th>Enrolled</th><th>Capacity</th><th>Actions</th></tr></thead>
+    <tbody>${bd.items.map(b=>`<tr><td>${b.code}</td><td>${b.name}</td><td>${fmt(b.department)}</td>
+      <td>${fmt(b.academic_year)}</td><td>${fmt(b.semester)}</td>
+      <td>${b.enrolled}</td><td>${b.capacity}</td>
+      <td class="actions"><button class="icon-btn" onclick="deleteBatch(${b.id})">🗑️</button></td>
+    </tr>`).join('')||'<tr><td colspan="8" class="empty-msg">None</td></tr>'}
+    </tbody></table></div>
+    <div id="tabContentCourses" class="card" style="padding:0;overflow:auto;display:none">
+    <div style="padding:12px;display:flex;justify-content:flex-end"><button class="btn small" id="addCourseBtn">+ Add Course</button></div>
+    <table><thead><tr><th>Code</th><th>Name</th><th>Dept</th><th>Sem</th><th>Credits</th><th>Actions</th></tr></thead>
+    <tbody>${cd.items.map(c=>`<tr><td>${c.code}</td><td>${c.name}</td><td>${fmt(c.department)}</td>
+      <td>${fmt(c.semester)}</td><td>${c.credits}</td>
+      <td class="actions"><button class="icon-btn" onclick="deleteCourse(${c.id})">🗑️</button></td>
+    </tr>`).join('')||'<tr><td colspan="6" class="empty-msg">None</td></tr>'}
+    </tbody></table></div>`;
+  $('addBatchBtn').addEventListener('click',()=>{
+    openModal('Add Batch',`<div class="form-grid">
+      <div class="form-group"><label>Code *</label><input name="code" required placeholder="CSE-4A"/></div>
+      <div class="form-group"><label>Name *</label><input name="name" required/></div>
+      <div class="form-group"><label>Department</label><input name="department" placeholder="CSE"/></div>
+      <div class="form-group"><label>Academic Year</label><input name="academic_year" placeholder="2026-2027"/></div>
+      <div class="form-group"><label>Semester</label><input name="semester" type="number"/></div>
+      <div class="form-group"><label>Capacity</label><input name="capacity" type="number" value="60"/></div>
+      <div class="form-group"><label>Start Date</label><input name="start_date" type="date"/></div>
+      <div class="form-group"><label>End Date</label><input name="end_date" type="date"/></div>
+    </div>`,
+    async()=>{ await API('/api/admin/batches',{method:'POST',body:JSON.stringify(formData())}); closeModal(); loadSection('batches'); });
+  });
+  document.getElementById('addCourseBtn')?.addEventListener('click',()=>{
+    openModal('Add Course',`<div class="form-grid">
+      <div class="form-group"><label>Code *</label><input name="code" required/></div>
+      <div class="form-group"><label>Name *</label><input name="name" required/></div>
+      <div class="form-group"><label>Department</label><input name="department"/></div>
+      <div class="form-group"><label>Semester</label><input name="semester" type="number"/></div>
+      <div class="form-group"><label>Credits</label><input name="credits" type="number" value="3"/></div>
+    </div>`,
+    async()=>{ await API('/api/admin/courses',{method:'POST',body:JSON.stringify(formData())}); closeModal(); loadSection('batches'); });
+  });
+};
+window.showTab = t => {
+  ['batches','courses'].forEach(x=>{
+    const btn = document.getElementById('tab'+x.charAt(0).toUpperCase()+x.slice(1));
+    const div = document.getElementById('tabContent'+x.charAt(0).toUpperCase()+x.slice(1));
+    if(btn) btn.classList.toggle('active',x===t);
+    if(div) div.style.display = x===t?'':'none';
+  });
+};
+window.deleteBatch = async id=>{ if(!confirm('Delete batch?'))return; await API(`/api/admin/batches/${id}`,{method:'DELETE'}); loadSection('batches'); };
+window.deleteCourse = async id=>{ if(!confirm('Delete course?'))return; await API(`/api/admin/courses/${id}`,{method:'DELETE'}); loadSection('batches'); };
+
+// ── ATTENDANCE ───────────────────────────────────────────────────
+sections.attendance = async (c) => {
+  const today = new Date().toISOString().split('T')[0];
+  c.innerHTML = `
+    <div class="section-header"><h2>Attendance Overview</h2></div>
+    <div class="filter-bar">
+      <input type="date" id="attDate" value="${today}"/>
+      <input id="attCourse" placeholder="Course Code (e.g. CSE201)"/>
+      <button class="btn small" id="attLoad">Load</button>
+    </div>
+    <div id="attTable" class="card" style="padding:0;overflow:auto">
+      <div class="empty-msg">Select a course and date, then click Load.</div>
+    </div>`;
+  $('attLoad').addEventListener('click', async ()=>{
+    const cc=$('attCourse').value.trim(), dt=$('attDate').value;
+    if(!cc||!dt){alert('Enter course code and date');return;}
+    const d = await API(`/api/admin/attendance?course_code=${cc}&date=${dt}`);
+    $('attTable').innerHTML = d.items.length ?
+      `<table><thead><tr><th>Roll No</th><th>Name</th><th>Status</th><th>Date</th></tr></thead>
+      <tbody>${d.items.map(a=>`<tr><td>${fmt(a.roll_no)}</td><td>${a.full_name}</td>
+        <td>${statusBadge(a.status)}</td><td>${a.date}</td></tr>`).join('')}
+      </tbody></table>` : '<div class="empty-msg">No attendance records found for this course/date.</div>';
+  });
+};
+
+// ── EXAMS ────────────────────────────────────────────────────────
+sections.exams = async (c) => {
+  const [ed, rd] = await Promise.all([API('/api/admin/exams'), API('/api/admin/results')]);
+  c.innerHTML = `
+    <div class="section-header"><h2>Exam & Result Management</h2>
+      <button class="btn small" id="addExamBtn">+ Add Exam</button></div>
+    <div class="tab-bar">
+      <button class="active" id="tabExamSchedule" onclick="showExamTab('schedule')">Schedules (${ed.items.length})</button>
+      <button id="tabExamResults" onclick="showExamTab('results')">Results (${rd.items.length})</button>
+    </div>
+    <div id="tabExamScheduleContent" class="card" style="padding:0;overflow:auto">
+    <table><thead><tr><th>Title</th><th>Course</th><th>Date</th><th>Time</th><th>Room</th><th>Marks</th><th>Actions</th></tr></thead>
+    <tbody>${ed.items.map(e=>`<tr><td>${e.title}</td><td>${fmt(e.course_code)}</td>
+      <td>${fmt(e.exam_date)}</td><td>${fmt(e.exam_time)}</td><td>${fmt(e.room)}</td>
+      <td>${e.total_marks} (Pass:${e.passing_marks})</td>
+      <td class="actions"><button class="icon-btn" onclick="addResultModal(${e.id},'${e.title.replace(/'/g,"\\'")}')">📝 Marks</button>
+      <button class="icon-btn" onclick="deleteExam(${e.id})">🗑️</button></td>
+    </tr>`).join('')||'<tr><td colspan="7" class="empty-msg">None</td></tr>'}
+    </tbody></table></div>
+    <div id="tabExamResultsContent" class="card" style="padding:0;overflow:auto;display:none">
+    <table><thead><tr><th>Student</th><th>Roll</th><th>Exam</th><th>Marks</th><th>Grade</th><th>Published</th><th>Actions</th></tr></thead>
+    <tbody>${rd.items.map(r=>`<tr><td>${r.full_name}</td><td>${fmt(r.roll_no)}</td><td>${r.exam_title}</td>
+      <td>${r.marks_obtained}</td><td>${badge(r.grade,'blue')}</td>
+      <td>${r.published?badge('Yes','green'):badge('No','gray')}</td>
+      <td class="actions">${!r.published?`<button class="icon-btn" onclick="publishResult(${r.id})">✅ Publish</button>`:''}
+      </td>
+    </tr>`).join('')||'<tr><td colspan="7" class="empty-msg">None</td></tr>'}
+    </tbody></table></div>`;
+  $('addExamBtn').addEventListener('click', ()=>{
+    openModal('Add Exam',`<div class="form-grid">
+      <div class="form-group"><label>Title *</label><input name="title" required/></div>
+      <div class="form-group"><label>Course Code</label><input name="course_code" placeholder="CSE201"/></div>
+      <div class="form-group"><label>Exam Date</label><input name="exam_date" type="date"/></div>
+      <div class="form-group"><label>Time</label><input name="exam_time" placeholder="10:00"/></div>
+      <div class="form-group"><label>Duration (mins)</label><input name="duration_mins" type="number" value="180"/></div>
+      <div class="form-group"><label>Room</label><input name="room" placeholder="Hall-A"/></div>
+      <div class="form-group"><label>Total Marks</label><input name="total_marks" type="number" value="100"/></div>
+      <div class="form-group"><label>Passing Marks</label><input name="passing_marks" type="number" value="40"/></div>
+      <div class="form-group"><label>Academic Year</label><input name="academic_year" placeholder="2026-2027"/></div>
+    </div>`,
+    async()=>{ await API('/api/admin/exams',{method:'POST',body:JSON.stringify(formData())}); closeModal(); loadSection('exams'); });
+  });
+};
+window.showExamTab = t => {
+  ['schedule','results'].forEach(x=>{
+    const cap = x.charAt(0).toUpperCase()+x.slice(1);
+    const btn = document.getElementById('tabExam'+cap);
+    const div = document.getElementById('tabExam'+cap+'Content');
+    if(btn) btn.classList.toggle('active',x===t);
+    if(div) div.style.display=x===t?'':'none';
+  });
+};
+window.deleteExam = async id=>{ if(!confirm('Delete exam?'))return; await API(`/api/admin/exams/${id}`,{method:'DELETE'}); loadSection('exams'); };
+window.publishResult = async id=>{ await API(`/api/admin/results/${id}/publish`,{method:'PUT'}); loadSection('exams'); };
+window.addResultModal = (examId, title) => {
+  openModal(`Enter Result: ${title}`,`<div class="form-grid">
+    <div class="form-group"><label>Student Roll No / Username</label><input name="student_username" id="stuLookup" placeholder="student or roll no"/></div>
+    <div class="form-group"><label>Marks Obtained</label><input name="marks_obtained" type="number"/></div>
+    <div class="form-group"><label>Remarks</label><input name="remarks"/></div>
+  </div>`,
+  async()=>{
+    const fd=formData();
+    const users = await API(`/api/admin/users?q=${fd.student_username}&role=student`);
+    if(!users.users.length){alert('Student not found');return;}
+    await API('/api/admin/results',{method:'POST',body:JSON.stringify({student_user_id:users.users[0].id,exam_id:examId,marks_obtained:fd.marks_obtained,remarks:fd.remarks})});
+    closeModal(); loadSection('exams');
+  });
+};
+
+// ── FEES ─────────────────────────────────────────────────────────
+sections.fees = async (c) => {
+  const d = await API('/api/admin/fees');
+  c.innerHTML = `
+    <div class="section-header"><h2>Fees Management</h2></div>
+    <div class="stat-cards" style="margin-bottom:16px">
+      <div class="stat-card"><div class="label">Total Collected</div><div class="value" style="font-size:20px">₹${d.total_paid?.toLocaleString()}</div></div>
+      ${d.by_type.map(t=>`<div class="stat-card"><div class="label">${t.fee_type}</div><div class="value" style="font-size:20px">₹${t.total?.toLocaleString()}</div></div>`).join('')}
+    </div>
+    <div class="card" style="padding:0;overflow:auto">
+    <table><thead><tr><th>Student</th><th>Fee Type</th><th>Amount</th><th>Status</th><th>Reference</th><th>Date</th></tr></thead>
+    <tbody>${d.payments.map(p=>`<tr>
+      <td>${p.full_name}<br><small style="color:var(--muted)">${p.username}</small></td>
+      <td>${p.fee_type}</td><td>₹${p.amount?.toLocaleString()}</td>
+      <td>${statusBadge(p.status)}</td><td>${fmt(p.reference)}</td><td>${fmtDate(p.paid_on)}</td>
+    </tr>`).join('')||'<tr><td colspan="6" class="empty-msg">None</td></tr>'}
+    </tbody></table></div>
+    <div style="text-align:right;margin-top:8px">
+      <a href="/api/admin/export/fees" class="btn small secondary">⬇ Export CSV</a>
+    </div>`;
+};
+
+// ── FEE STRUCTURES ───────────────────────────────────────────────
+sections.feeStructures = async (c) => {
+  const d = await API('/api/admin/fee-structures');
+  c.innerHTML = `
+    <div class="section-header"><h2>Fee Structures</h2>
+      <button class="btn small" id="addFSBtn">+ Add Structure</button></div>
+    <div class="card" style="padding:0;overflow:auto">
+    <table><thead><tr><th>Name</th><th>Dept</th><th>Sem</th><th>Year</th><th>Tuition</th><th>Hostel</th><th>Total</th><th>Actions</th></tr></thead>
+    <tbody>${d.items.map(i=>`<tr><td>${i.name}</td><td>${fmt(i.department)}</td><td>${fmt(i.semester)}</td>
+      <td>${fmt(i.academic_year)}</td><td>₹${i.tuition_fee?.toLocaleString()}</td>
+      <td>₹${i.hostel_fee?.toLocaleString()}</td><td>₹${i.total_fee?.toLocaleString()}</td>
+      <td class="actions"><button class="icon-btn" onclick="deleteFS(${i.id})">🗑️</button></td>
+    </tr>`).join('')||'<tr><td colspan="8" class="empty-msg">None</td></tr>'}
+    </tbody></table></div>`;
+  $('addFSBtn').addEventListener('click',()=>{
+    openModal('Add Fee Structure',`<div class="form-grid">
+      <div class="form-group"><label>Name *</label><input name="name" required/></div>
+      <div class="form-group"><label>Department</label><input name="department"/></div>
+      <div class="form-group"><label>Semester</label><input name="semester" type="number"/></div>
+      <div class="form-group"><label>Academic Year</label><input name="academic_year" placeholder="2026-2027"/></div>
+      <div class="form-group"><label>Tuition Fee</label><input name="tuition_fee" type="number" value="0"/></div>
+      <div class="form-group"><label>Hostel Fee</label><input name="hostel_fee" type="number" value="0"/></div>
+      <div class="form-group"><label>Transport Fee</label><input name="transport_fee" type="number" value="0"/></div>
+      <div class="form-group"><label>Library Fee</label><input name="library_fee" type="number" value="0"/></div>
+      <div class="form-group"><label>Lab Fee</label><input name="lab_fee" type="number" value="0"/></div>
+      <div class="form-group"><label>Other Fee</label><input name="other_fee" type="number" value="0"/></div>
+    </div>`,
+    async()=>{ await API('/api/admin/fee-structures',{method:'POST',body:JSON.stringify(formData())}); closeModal(); loadSection('feeStructures'); });
+  });
+};
+window.deleteFS = async id=>{ if(!confirm('Delete?'))return; await API(`/api/admin/fee-structures/${id}`,{method:'DELETE'}); loadSection('feeStructures'); };
+
+// ── TRANSACTIONS ─────────────────────────────────────────────────
+sections.transactions = async (c) => {
+  const d = await API('/api/admin/transactions');
+  const s = d.summary;
+  c.innerHTML = `
+    <div class="section-header"><h2>Income & Expenses</h2>
+      <button class="btn small" id="addTxnBtn">+ Add Entry</button></div>
+    <div class="stat-cards" style="margin-bottom:16px">
+      <div class="stat-card"><div class="label">Total Income</div><div class="value" style="font-size:22px;color:var(--success)">₹${s.income?.toLocaleString()}</div></div>
+      <div class="stat-card"><div class="label">Total Expense</div><div class="value" style="font-size:22px;color:var(--danger)">₹${s.expense?.toLocaleString()}</div></div>
+      <div class="stat-card"><div class="label">Balance</div><div class="value" style="font-size:22px;color:${s.balance>=0?'var(--success)':'var(--danger)'}">₹${s.balance?.toLocaleString()}</div></div>
+    </div>
+    <div class="card" style="padding:0;overflow:auto">
+    <table><thead><tr><th>Type</th><th>Category</th><th>Amount</th><th>Description</th><th>Date</th><th>Actions</th></tr></thead>
+    <tbody>${d.items.map(t=>`<tr>
+      <td>${t.type==='income'?badge('Income','green'):badge('Expense','red')}</td>
+      <td>${t.category}</td><td>₹${t.amount?.toLocaleString()}</td>
+      <td>${fmt(t.description)}</td><td>${t.transaction_date}</td>
+      <td class="actions"><button class="icon-btn" onclick="deleteTxn(${t.id})">🗑️</button></td>
+    </tr>`).join('')||'<tr><td colspan="6" class="empty-msg">None</td></tr>'}
+    </tbody></table></div>`;
+  $('addTxnBtn').addEventListener('click',()=>{
+    openModal('Add Transaction',`<div class="form-grid">
+      <div class="form-group"><label>Type *</label><select name="type"><option value="income">Income</option><option value="expense">Expense</option></select></div>
+      <div class="form-group"><label>Category *</label><input name="category" required/></div>
+      <div class="form-group"><label>Amount *</label><input name="amount" type="number" required/></div>
+      <div class="form-group"><label>Date *</label><input name="transaction_date" type="date" required/></div>
+      <div class="form-group cols1"><label>Description</label><input name="description"/></div>
+      <div class="form-group cols1"><label>Reference</label><input name="reference"/></div>
+    </div>`,
+    async()=>{ await API('/api/admin/transactions',{method:'POST',body:JSON.stringify(formData())}); closeModal(); loadSection('transactions'); });
+  });
+};
+window.deleteTxn = async id=>{ if(!confirm('Delete?'))return; await API(`/api/admin/transactions/${id}`,{method:'DELETE'}); loadSection('transactions'); };
+
+// ── EMPLOYEES ────────────────────────────────────────────────────
+sections.employees = async (c) => {
+  const d = await API('/api/admin/employees');
+  c.innerHTML = `
+    <div class="section-header"><h2>Employees</h2>
+      <button class="btn small" id="addEmpBtn">+ Add Employee</button></div>
+    <div class="card" style="padding:0;overflow:auto">
+    <table><thead><tr><th>Emp Code</th><th>Name</th><th>Department</th><th>Designation</th><th>Salary</th><th>Phone</th><th>Actions</th></tr></thead>
+    <tbody>${d.items.map(e=>`<tr><td>${e.emp_code}</td><td>${fmt(e.full_name)}</td>
+      <td>${fmt(e.department)}</td><td>${fmt(e.designation)}</td>
+      <td>₹${(e.salary||0).toLocaleString()}</td><td>${fmt(e.phone)}</td>
+      <td class="actions"><button class="icon-btn" onclick="deleteEmp(${e.id})">🗑️</button></td>
+    </tr>`).join('')||'<tr><td colspan="7" class="empty-msg">None</td></tr>'}
+    </tbody></table></div>`;
+  $('addEmpBtn').addEventListener('click',()=>{
+    openModal('Add Employee',`<div class="form-grid">
+      <div class="form-group"><label>Emp Code *</label><input name="emp_code" required/></div>
+      <div class="form-group"><label>Department</label><input name="department"/></div>
+      <div class="form-group"><label>Designation</label><input name="designation"/></div>
+      <div class="form-group"><label>Join Date</label><input name="join_date" type="date"/></div>
+      <div class="form-group"><label>Salary</label><input name="salary" type="number"/></div>
+      <div class="form-group"><label>Phone</label><input name="phone"/></div>
+      <div class="form-group"><label>PAN</label><input name="pan"/></div>
+      <div class="form-group"><label>Bank Account</label><input name="bank_account"/></div>
+    </div>`,
+    async()=>{ await API('/api/admin/employees',{method:'POST',body:JSON.stringify(formData())}); closeModal(); loadSection('employees'); });
+  });
+};
+window.deleteEmp = async id=>{ if(!confirm('Delete?'))return; await API(`/api/admin/employees/${id}`,{method:'DELETE'}); loadSection('employees'); };
+
+// ── PAYROLL ──────────────────────────────────────────────────────
+sections.payroll = async (c) => {
+  const thisMonth = new Date().toISOString().slice(0,7);
+  const [ed, pd] = await Promise.all([API('/api/admin/employees'), API(`/api/admin/payroll?month=${thisMonth}`)]);
+  c.innerHTML = `
+    <div class="section-header"><h2>HRM & Payroll</h2>
+      <button class="btn small" id="genPayrollBtn">+ Generate Payslip</button></div>
+    <div class="filter-bar">
+      <input type="month" id="payMonth" value="${thisMonth}"/>
+      <button class="btn small secondary" id="loadPayroll">Load</button>
+    </div>
+    <div id="payrollTable" class="card" style="padding:0;overflow:auto">
+    <table><thead><tr><th>Emp Code</th><th>Name</th><th>Designation</th><th>Basic</th><th>Allowances</th><th>Deductions</th><th>Net Salary</th><th>Status</th><th>Actions</th></tr></thead>
+    <tbody id="payrollBody">${renderPayrollRows(pd.items)}</tbody></table></div>`;
+  $('loadPayroll').addEventListener('click', async ()=>{
+    const m=$('payMonth').value;
+    const pd2 = await API(`/api/admin/payroll?month=${m}`);
+    $('payrollBody').innerHTML = renderPayrollRows(pd2.items);
+  });
+  $('genPayrollBtn').addEventListener('click',()=>{
+    openModal('Generate Payslip',`<div class="form-grid">
+      <div class="form-group"><label>Employee *</label><select name="employee_id">
+        ${ed.items.map(e=>`<option value="${e.id}">${e.emp_code} - ${e.full_name||e.designation||'Staff'}</option>`).join('')}
+      </select></div>
+      <div class="form-group"><label>Month *</label><input name="month" type="month" value="${thisMonth}" required/></div>
+      <div class="form-group"><label>Basic Salary</label><input name="basic" type="number"/></div>
+      <div class="form-group"><label>HRA</label><input name="hra" type="number"/></div>
+      <div class="form-group"><label>DA</label><input name="da" type="number"/></div>
+      <div class="form-group"><label>Other Allowances</label><input name="other_allowances" type="number"/></div>
+      <div class="form-group"><label>PF Deduction</label><input name="pf_deduction" type="number"/></div>
+      <div class="form-group"><label>Tax Deduction</label><input name="tax_deduction" type="number"/></div>
+    </div>`,
+    async()=>{ const r=await API('/api/admin/payroll',{method:'POST',body:JSON.stringify(formData())}); alert(`Net Salary: ₹${r.net_salary?.toLocaleString()}`); closeModal(); loadSection('payroll'); });
+  });
+};
+function renderPayrollRows(items) {
+  return items.map(p=>`<tr><td>${p.emp_code}</td><td>${fmt(p.full_name)}</td><td>${fmt(p.designation)}</td>
+    <td>₹${(p.basic||0).toLocaleString()}</td>
+    <td>₹${((p.hra||0)+(p.da||0)+(p.other_allowances||0)).toLocaleString()}</td>
+    <td>₹${((p.pf_deduction||0)+(p.tax_deduction||0)+(p.other_deductions||0)).toLocaleString()}</td>
+    <td>₹${(p.net_salary||0).toLocaleString()}</td>
+    <td>${statusBadge(p.status)}</td>
+    <td class="actions"><button class="icon-btn" onclick="markPayrollPaid(${p.id})">✅ Mark Paid</button></td>
+  </tr>`).join('')||'<tr><td colspan="9" class="empty-msg">No payroll for this month</td></tr>';
+}
+window.markPayrollPaid = async id=>{ await API(`/api/admin/payroll/${id}/status`,{method:'PUT',body:JSON.stringify({status:'paid'})}); loadSection('payroll'); };
+
+// ── NOTIFICATIONS ────────────────────────────────────────────────
+sections.notifications = async (c) => {
+  const d = await API('/api/admin/notifications');
+  c.innerHTML = `
+    <div class="section-header"><h2>Notifications</h2>
+      <button class="btn small" id="addNotifBtn">+ Send Notification</button></div>
+    <div class="card" style="padding:0;overflow:auto">
+    <table><thead><tr><th>Title</th><th>Type</th><th>Audience</th><th>Sent By</th><th>Sent At</th></tr></thead>
+    <tbody>${d.items.map(n=>`<tr><td>${n.title}</td><td>${badge(n.type,'blue')}</td>
+      <td>${badge(n.audience,'gray')}</td><td>${fmt(n.sent_by_name)}</td><td>${fmtDate(n.sent_at)}</td>
+    </tr>`).join('')||'<tr><td colspan="5" class="empty-msg">None</td></tr>'}
+    </tbody></table></div>`;
+  $('addNotifBtn').addEventListener('click',()=>{
+    openModal('Send Notification',`<div class="form-grid cols1">
+      <div class="form-group"><label>Title *</label><input name="title" required/></div>
+      <div class="form-group"><label>Message *</label><textarea name="message" required></textarea></div>
+      <div class="form-group"><label>Type</label><select name="type"><option value="app">App</option><option value="sms">SMS</option><option value="email">Email</option><option value="all">All</option></select></div>
+      <div class="form-group"><label>Audience</label><select name="audience"><option value="all">All</option><option value="student">Students</option><option value="faculty">Faculty</option><option value="parent">Parents</option><option value="admin">Admins</option></select></div>
+    </div>`,
+    async()=>{ const r=await API('/api/admin/notifications',{method:'POST',body:JSON.stringify(formData())}); alert(`Sent to ${r.sent_to} users`); closeModal(); loadSection('notifications'); });
+  });
+};
+
+// ── NOTICES ──────────────────────────────────────────────────────
+sections.notices = async (c) => {
+  const d = await API('/api/admin/notices');
+  c.innerHTML = `
+    <div class="section-header"><h2>Notices</h2>
+      <button class="btn small" id="addNoticeBtn">+ Add Notice</button></div>
+    <div class="card" style="padding:0;overflow:auto">
+    <table><thead><tr><th>Title</th><th>Audience</th><th>Posted By</th><th>Date</th><th>Actions</th></tr></thead>
+    <tbody>${d.items.map(n=>`<tr><td>${n.title}</td><td>${badge(n.audience,'blue')}</td>
+      <td>${fmt(n.by_user)}</td><td>${fmtDate(n.created_at)}</td>
+      <td class="actions"><button class="icon-btn" onclick="deleteNotice(${n.id})">🗑️</button></td>
+    </tr>`).join('')||'<tr><td colspan="5" class="empty-msg">None</td></tr>'}
+    </tbody></table></div>`;
+  $('addNoticeBtn').addEventListener('click',()=>{
+    openModal('Add Notice',`<div class="form-grid cols1">
+      <div class="form-group"><label>Title *</label><input name="title" required/></div>
+      <div class="form-group"><label>Body *</label><textarea name="body" required></textarea></div>
+      <div class="form-group"><label>Audience</label><select name="audience"><option value="all">All</option><option value="student">Students</option><option value="faculty">Faculty</option><option value="parent">Parents</option></select></div>
+    </div>`,
+    async()=>{ await API('/api/admin/notices',{method:'POST',body:JSON.stringify(formData())}); closeModal(); loadSection('notices'); });
+  });
+};
+window.deleteNotice = async id=>{ if(!confirm('Delete?'))return; await API(`/api/admin/notices/${id}`,{method:'DELETE'}); loadSection('notices'); };
+
+// ── ENQUIRIES ────────────────────────────────────────────────────
+sections.enquiries = async (c) => {
+  const d = await API('/api/admin/enquiries');
+  c.innerHTML = `
+    <div class="section-header"><h2>Enquiry & Follow-up</h2>
+      <button class="btn small" id="addEnqBtn">+ Add Enquiry</button></div>
+    <div class="card" style="padding:0;overflow:auto">
+    <table><thead><tr><th>Name</th><th>Phone</th><th>Course</th><th>Source</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
+    <tbody>${d.items.map(e=>`<tr><td>${e.name}<br><small style="color:var(--muted)">${fmt(e.email)}</small></td>
+      <td>${fmt(e.phone)}</td><td>${fmt(e.course_interest)}</td>
+      <td>${fmt(e.source)}</td><td>${statusBadge(e.status)}</td><td>${fmtDate(e.created_at)}</td>
+      <td class="actions">
+        <button class="icon-btn" onclick="updateEnquiryStatus(${e.id})">✏️</button>
+        <button class="icon-btn" onclick="addFollowup(${e.id},'${e.name.replace(/'/g,"\\'")}')">📞 Follow</button>
+        <button class="icon-btn" onclick="deleteEnquiry(${e.id})">🗑️</button>
+      </td>
+    </tr>`).join('')||'<tr><td colspan="7" class="empty-msg">None</td></tr>'}
+    </tbody></table></div>`;
+  $('addEnqBtn').addEventListener('click',()=>{
+    openModal('Add Enquiry',`<div class="form-grid">
+      <div class="form-group"><label>Name *</label><input name="name" required/></div>
+      <div class="form-group"><label>Phone</label><input name="phone"/></div>
+      <div class="form-group"><label>Email</label><input name="email" type="email"/></div>
+      <div class="form-group"><label>Course Interest</label><input name="course_interest"/></div>
+      <div class="form-group"><label>Source</label><select name="source"><option value="walk-in">Walk-In</option><option value="referral">Referral</option><option value="social-media">Social Media</option><option value="website">Website</option><option value="phone">Phone</option></select></div>
+      <div class="form-group cols1"><label>Notes</label><textarea name="notes"></textarea></div>
+    </div>`,
+    async()=>{ await API('/api/admin/enquiries',{method:'POST',body:JSON.stringify(formData())}); closeModal(); loadSection('enquiries'); });
+  });
+};
+window.updateEnquiryStatus = id=>{
+  openModal('Update Enquiry',`<div class="form-grid cols1">
+    <div class="form-group"><label>Status</label><select name="status"><option value="new">New</option><option value="follow-up">Follow-Up</option><option value="converted">Converted</option><option value="dropped">Dropped</option></select></div>
+    <div class="form-group"><label>Notes</label><textarea name="notes"></textarea></div>
+  </div>`,
+  async()=>{ await API(`/api/admin/enquiries/${id}`,{method:'PUT',body:JSON.stringify(formData())}); closeModal(); loadSection('enquiries'); });
+};
+window.addFollowup = (id,name)=>{
+  openModal(`Follow-up: ${name}`,`<div class="form-grid cols1">
+    <div class="form-group"><label>Notes *</label><textarea name="notes" required></textarea></div>
+    <div class="form-group"><label>Next Follow-up Date</label><input name="next_follow_up" type="date"/></div>
+  </div>`,
+  async()=>{ await API(`/api/admin/enquiries/${id}/followups`,{method:'POST',body:JSON.stringify(formData())}); closeModal(); loadSection('enquiries'); });
+};
+window.deleteEnquiry = async id=>{ if(!confirm('Delete?'))return; await API(`/api/admin/enquiries/${id}`,{method:'DELETE'}); loadSection('enquiries'); };
+
+// ── CONTACTS ─────────────────────────────────────────────────────
+sections.contacts = async (c) => {
+  let q='';
+  const render = async ()=>{
+    const d = await API(`/api/admin/contacts?q=${encodeURIComponent(q)}`);
+    c.innerHTML = `
+      <div class="section-header"><h2>Contact Management</h2>
+        <button class="btn small" id="addContactBtn">+ Add Contact</button></div>
+      <div class="filter-bar"><input placeholder="Search…" id="cSearch" value="${q}" style="flex:1;max-width:280px"/></div>
+      <div class="card" style="padding:0;overflow:auto">
+      <table><thead><tr><th>Name</th><th>Role</th><th>Department</th><th>Phone</th><th>Email</th><th>Actions</th></tr></thead>
+      <tbody>${d.items.map(c2=>`<tr><td>${c2.name}</td><td>${fmt(c2.role)}</td><td>${fmt(c2.department)}</td>
+        <td>${fmt(c2.phone)}</td><td>${fmt(c2.email)}</td>
+        <td class="actions"><button class="icon-btn" onclick="deleteContact(${c2.id})">🗑️</button></td>
+      </tr>`).join('')||'<tr><td colspan="6" class="empty-msg">None</td></tr>'}
+      </tbody></table></div>`;
+    $('cSearch').addEventListener('input', e=>{ q=e.target.value; render(); });
+    $('addContactBtn').addEventListener('click',()=>{
+      openModal('Add Contact',`<div class="form-grid">
+        <div class="form-group"><label>Name *</label><input name="name" required/></div>
+        <div class="form-group"><label>Role</label><input name="role" placeholder="HOD, Faculty..."/></div>
+        <div class="form-group"><label>Department</label><input name="department"/></div>
+        <div class="form-group"><label>Phone</label><input name="phone"/></div>
+        <div class="form-group"><label>Email</label><input name="email" type="email"/></div>
+        <div class="form-group"><label>Address</label><input name="address"/></div>
+      </div>`,
+      async()=>{ await API('/api/admin/contacts',{method:'POST',body:JSON.stringify(formData())}); closeModal(); render(); });
+    });
+  };
+  await render();
+};
+window.deleteContact = async id=>{ if(!confirm('Delete?'))return; await API(`/api/admin/contacts/${id}`,{method:'DELETE'}); loadSection('contacts'); };
+
+// ── STUDY MATERIAL ───────────────────────────────────────────────
+sections.studyMaterial = async (c) => {
+  const d = await API('/api/admin/study-materials');
+  c.innerHTML = `
+    <div class="section-header"><h2>Study Material / File Sharing</h2>
+      <button class="btn small" id="addMatBtn">+ Upload</button></div>
+    <div class="card" style="padding:0;overflow:auto">
+    <table><thead><tr><th>Title</th><th>Course</th><th>File</th><th>Uploaded</th><th>Actions</th></tr></thead>
+    <tbody>${d.items.map(m=>`<tr><td>${m.title}<br><small style="color:var(--muted)">${fmt(m.description)}</small></td>
+      <td>${fmt(m.course_code)}</td><td>${fmt(m.file_name)}</td><td>${fmtDate(m.created_at)}</td>
+      <td class="actions"><button class="icon-btn" onclick="deleteMat(${m.id})">🗑️</button></td>
+    </tr>`).join('')||'<tr><td colspan="5" class="empty-msg">None</td></tr>'}
+    </tbody></table></div>`;
+  $('addMatBtn').addEventListener('click',()=>{
+    openModal('Upload Study Material',`<div class="form-grid cols1">
+      <div class="form-group"><label>Title *</label><input name="title" required/></div>
+      <div class="form-group"><label>Description</label><input name="description"/></div>
+      <div class="form-group"><label>Course Code</label><input name="course_code" placeholder="CSE201"/></div>
+      <div class="form-group"><label>File (optional, Base64)</label><textarea name="file_data" placeholder="Paste base64 file data or leave blank"></textarea></div>
+      <div class="form-group"><label>File Name</label><input name="file_name" placeholder="notes.pdf"/></div>
+    </div>`,
+    async()=>{ await API('/api/admin/study-materials',{method:'POST',body:JSON.stringify(formData())}); closeModal(); loadSection('studyMaterial'); });
+  });
+};
+window.deleteMat = async id=>{ if(!confirm('Delete?'))return; await API(`/api/admin/study-materials/${id}`,{method:'DELETE'}); loadSection('studyMaterial'); };
+
+// ── ONLINE EXAMS ─────────────────────────────────────────────────
+sections.onlineExams = async (c) => {
+  const d = await API('/api/admin/online-exams');
+  c.innerHTML = `
+    <div class="section-header"><h2>Online Exam with Revision</h2>
+      <button class="btn small" id="addOEBtn">+ Create Exam</button></div>
+    <div class="card" style="padding:0;overflow:auto">
+    <table><thead><tr><th>Title</th><th>Course</th><th>Duration</th><th>Marks</th><th>Questions</th><th>Status</th><th>Actions</th></tr></thead>
+    <tbody>${d.items.map(e=>`<tr><td>${e.title}</td><td>${fmt(e.course_code)}</td>
+      <td>${e.duration_mins} min</td><td>${e.total_marks}</td><td>${e.question_count}</td>
+      <td>${statusBadge(e.status)}</td>
+      <td class="actions">
+        <button class="icon-btn" onclick="manageQuestions(${e.id},'${e.title.replace(/'/g,"\\'")}')">❓ Questions</button>
+        ${e.status==='draft'?`<button class="icon-btn" onclick="publishOE(${e.id})">🚀 Publish</button>`:''}
+        <button class="icon-btn" onclick="deleteOE(${e.id})">🗑️</button>
+      </td>
+    </tr>`).join('')||'<tr><td colspan="7" class="empty-msg">None</td></tr>'}
+    </tbody></table></div>`;
+  $('addOEBtn').addEventListener('click',()=>{
+    openModal('Create Online Exam',`<div class="form-grid">
+      <div class="form-group"><label>Title *</label><input name="title" required/></div>
+      <div class="form-group"><label>Course Code</label><input name="course_code"/></div>
+      <div class="form-group"><label>Duration (mins)</label><input name="duration_mins" type="number" value="60"/></div>
+      <div class="form-group"><label>Total Marks</label><input name="total_marks" type="number" value="50"/></div>
+      <div class="form-group"><label>Passing Marks</label><input name="passing_marks" type="number" value="20"/></div>
+      <div class="form-group"><label>Start Time</label><input name="start_time" type="datetime-local"/></div>
+      <div class="form-group"><label>End Time</label><input name="end_time" type="datetime-local"/></div>
+      <div class="form-group cols1"><label>Instructions</label><textarea name="instructions"></textarea></div>
+    </div>`,
+    async()=>{ await API('/api/admin/online-exams',{method:'POST',body:JSON.stringify(formData())}); closeModal(); loadSection('onlineExams'); });
+  });
+};
+window.publishOE = async id=>{ await API(`/api/admin/online-exams/${id}/publish`,{method:'PUT'}); loadSection('onlineExams'); };
+window.deleteOE = async id=>{ if(!confirm('Delete?'))return; await API(`/api/admin/online-exams/${id}`,{method:'DELETE'}); loadSection('onlineExams'); };
+window.manageQuestions = async (id, title) => {
+  const qd = await API(`/api/admin/online-exams/${id}/questions`);
+  openModal(`Questions: ${title}`,
+    `<div style="max-height:300px;overflow-y:auto;margin-bottom:12px">
+      ${qd.items.map((q,i)=>`<div style="background:var(--bg);padding:8px;border-radius:6px;margin-bottom:6px;font-size:12px">
+        <strong>${i+1}. ${q.question}</strong> (${q.marks} mark${q.marks>1?'s':''})<br>
+        a)${q.option_a||'—'} b)${q.option_b||'—'} c)${q.option_c||'—'} d)${q.option_d||'—'}
+        <span style="color:var(--success);font-weight:500"> ✓ ${q.correct_option}</span>
+      </div>`).join('')||'<div class="empty-msg" style="padding:8px">No questions yet</div>'}
+    </div>
+    <hr style="border-color:var(--border);margin:12px 0"/>
+    <strong style="font-size:13px">Add Question</strong>
+    <div class="form-grid" style="margin-top:8px">
+      <div class="form-group cols1"><label>Question *</label><textarea name="question" required rows="2"></textarea></div>
+      <div class="form-group"><label>Option A</label><input name="option_a"/></div>
+      <div class="form-group"><label>Option B</label><input name="option_b"/></div>
+      <div class="form-group"><label>Option C</label><input name="option_c"/></div>
+      <div class="form-group"><label>Option D</label><input name="option_d"/></div>
+      <div class="form-group"><label>Correct (a/b/c/d)</label><input name="correct_option" placeholder="b"/></div>
+      <div class="form-group"><label>Marks</label><input name="marks" type="number" value="1"/></div>
+    </div>`,
+    async()=>{ await API(`/api/admin/online-exams/${id}/questions`,{method:'POST',body:JSON.stringify(formData())}); manageQuestions(id,title); }
+  );
+};
+
+// ── LECTURES ─────────────────────────────────────────────────────
+sections.lectures = async (c) => {
+  const d = await API('/api/admin/lectures');
+  c.innerHTML = `
+    <div class="section-header"><h2>Lecture Management</h2></div>
+    <div class="card" style="padding:0;overflow:auto">
+    <table><thead><tr><th>Title</th><th>Course</th><th>Faculty</th><th>Batch</th><th>Date</th><th>Time</th></tr></thead>
+    <tbody>${d.items.map(l=>`<tr><td>${l.title}<br><small style="color:var(--muted)">${fmt(l.topic)}</small></td>
+      <td>${fmt(l.course_code)}</td><td>${fmt(l.faculty_name)}</td><td>${fmt(l.batch_name)}</td>
+      <td>${fmt(l.lecture_date)}</td><td>${fmt(l.start_time)}–${fmt(l.end_time)}</td>
+    </tr>`).join('')||'<tr><td colspan="6" class="empty-msg">Faculty add lectures via their portal</td></tr>'}
+    </tbody></table></div>`;
+};
+
+// ── LMS ──────────────────────────────────────────────────────────
+sections.lms = async (c) => {
+  const d = await API('/api/admin/lms/courses');
+  c.innerHTML = `
+    <div class="section-header"><h2>LMS / e-Learning</h2>
+      <button class="btn small" id="addLMSBtn">+ Create Course</button></div>
+    <div class="card" style="padding:0;overflow:auto">
+    <table><thead><tr><th>Title</th><th>Category</th><th>Instructor</th><th>Duration</th><th>Modules</th><th>Enrolled</th><th>Status</th><th>Actions</th></tr></thead>
+    <tbody>${d.items.map(c2=>`<tr><td>${c2.title}<br><small style="color:var(--muted)">${fmt(c2.description)?.slice(0,40)}</small></td>
+      <td>${fmt(c2.category)}</td><td>${fmt(c2.instructor_name)}</td>
+      <td>${c2.duration_hours}h</td><td>${c2.module_count}</td><td>${c2.enrollments}</td>
+      <td>${statusBadge(c2.status)}</td>
+      <td class="actions">
+        <button class="icon-btn" onclick="addLMSModule(${c2.id},'${c2.title.replace(/'/g,"\\'")}')">📚 Modules</button>
+        ${c2.status!=='published'?`<button class="icon-btn" onclick="publishLMS(${c2.id})">🚀</button>`:''}
+        <button class="icon-btn" onclick="deleteLMS(${c2.id})">🗑️</button>
+      </td>
+    </tr>`).join('')||'<tr><td colspan="8" class="empty-msg">None</td></tr>'}
+    </tbody></table></div>`;
+  $('addLMSBtn').addEventListener('click',()=>{
+    openModal('Create LMS Course',`<div class="form-grid cols1">
+      <div class="form-group"><label>Title *</label><input name="title" required/></div>
+      <div class="form-group"><label>Description</label><textarea name="description"></textarea></div>
+      <div class="form-group"><label>Category</label><input name="category" placeholder="Programming, Mathematics..."/></div>
+      <div class="form-group"><label>Duration (hours)</label><input name="duration_hours" type="number" value="10"/></div>
+    </div>`,
+    async()=>{ await API('/api/admin/lms/courses',{method:'POST',body:JSON.stringify(formData())}); closeModal(); loadSection('lms'); });
+  });
+};
+window.publishLMS = async id=>{ await API(`/api/admin/lms/courses/${id}/publish`,{method:'PUT'}); loadSection('lms'); };
+window.deleteLMS = async id=>{ if(!confirm('Delete?'))return; await API(`/api/admin/lms/courses/${id}`,{method:'DELETE'}); loadSection('lms'); };
+window.addLMSModule = async (cid, ctitle) => {
+  const md = await API(`/api/admin/lms/courses/${cid}/modules`);
+  openModal(`Modules: ${ctitle}`,
+    `<div style="max-height:200px;overflow-y:auto;margin-bottom:12px">
+      ${md.items.map((m,i)=>`<div style="background:var(--bg);padding:6px 10px;border-radius:6px;margin-bottom:4px;font-size:12px">${i+1}. ${m.title}</div>`).join('')||'<div class="empty-msg" style="padding:6px">No modules</div>'}
+    </div>
+    <hr style="border-color:var(--border);margin:10px 0"/>
+    <div class="form-grid cols1">
+      <div class="form-group"><label>Module Title *</label><input name="title" required/></div>
+      <div class="form-group"><label>Content</label><textarea name="content" rows="3"></textarea></div>
+      <div class="form-group"><label>Video URL</label><input name="video_url" placeholder="https://…"/></div>
+      <div class="form-group"><label>Order</label><input name="order_no" type="number" value="${md.items.length+1}"/></div>
+    </div>`,
+    async()=>{ await API(`/api/admin/lms/courses/${cid}/modules`,{method:'POST',body:JSON.stringify(formData())}); addLMSModule(cid,ctitle); }
+  );
+};
+
+// ── HOSTEL ───────────────────────────────────────────────────────
+sections.hostel = async (c) => {
+  const [rooms, allotments] = await Promise.all([API('/api/admin/hostel/rooms'),API('/api/admin/hostel/allotments')]);
+  c.innerHTML = `
+    <div class="section-header"><h2>Hostel Management</h2>
+      <button class="btn small" id="addRoomBtn">+ Add Room</button>
+      <button class="btn small secondary" id="addAllotBtn" style="margin-left:6px">+ Allot Room</button></div>
+    <div class="tab-bar">
+      <button class="active" id="tabRooms" onclick="showHostelTab('rooms')">Rooms (${rooms.items.length})</button>
+      <button id="tabAllotments" onclick="showHostelTab('allotments')">Allotments (${allotments.items.length})</button>
+    </div>
+    <div id="tabRoomsContent" class="card" style="padding:0;overflow:auto">
+    <table><thead><tr><th>Room</th><th>Block</th><th>Floor</th><th>Capacity</th><th>Occupied</th><th>Type</th><th>Monthly Fee</th><th>Actions</th></tr></thead>
+    <tbody>${rooms.items.map(r=>`<tr><td>${r.room_no}</td><td>${fmt(r.block)}</td><td>${fmt(r.floor)}</td>
+      <td>${r.capacity}</td><td>${r.occupied}</td><td>${r.room_type}</td>
+      <td>₹${r.monthly_fee?.toLocaleString()}</td>
+      <td class="actions"><button class="icon-btn" onclick="deleteRoom(${r.id})">🗑️</button></td>
+    </tr>`).join('')||'<tr><td colspan="8" class="empty-msg">None</td></tr>'}
+    </tbody></table></div>
+    <div id="tabAllotmentsContent" class="card" style="padding:0;overflow:auto;display:none">
+    <table><thead><tr><th>Student</th><th>Roll No</th><th>Room</th><th>Block</th><th>Allotted On</th><th>Actions</th></tr></thead>
+    <tbody>${allotments.items.map(a=>`<tr><td>${a.full_name}</td><td>${fmt(a.roll_no)}</td>
+      <td>${a.room_no}</td><td>${fmt(a.block)}</td><td>${a.allotment_date}</td>
+      <td class="actions"><button class="icon-btn" onclick="vacateRoom(${a.id})">🚪 Vacate</button></td>
+    </tr>`).join('')||'<tr><td colspan="6" class="empty-msg">None</td></tr>'}
+    </tbody></table></div>`;
+  $('addRoomBtn').addEventListener('click',()=>{
+    openModal('Add Hostel Room',`<div class="form-grid">
+      <div class="form-group"><label>Room No *</label><input name="room_no" required placeholder="A101"/></div>
+      <div class="form-group"><label>Block</label><input name="block" placeholder="A"/></div>
+      <div class="form-group"><label>Floor</label><input name="floor" type="number"/></div>
+      <div class="form-group"><label>Capacity</label><input name="capacity" type="number" value="2"/></div>
+      <div class="form-group"><label>Type</label><select name="room_type"><option value="sharing">Sharing</option><option value="single">Single</option></select></div>
+      <div class="form-group"><label>Monthly Fee</label><input name="monthly_fee" type="number" value="3500"/></div>
+    </div>`,
+    async()=>{ await API('/api/admin/hostel/rooms',{method:'POST',body:JSON.stringify(formData())}); closeModal(); loadSection('hostel'); });
+  });
+  $('addAllotBtn').addEventListener('click',()=>{
+    openModal('Allot Room',`<div class="form-grid">
+      <div class="form-group"><label>Room No</label><select name="room_id">${rooms.items.filter(r=>r.occupied<r.capacity).map(r=>`<option value="${r.id}">${r.room_no} (${r.block})</option>`).join('')}</select></div>
+      <div class="form-group"><label>Student Username/Roll</label><input name="student_username" id="stuLookupH" placeholder="username"/></div>
+      <div class="form-group"><label>Allotment Date</label><input name="allotment_date" type="date"/></div>
+    </div>`,
+    async()=>{
+      const fd=formData();
+      const ud=await API(`/api/admin/users?q=${fd.student_username}&role=student`);
+      if(!ud.users.length){alert('Student not found');return;}
+      await API('/api/admin/hostel/allotments',{method:'POST',body:JSON.stringify({room_id:fd.room_id,student_user_id:ud.users[0].id,allotment_date:fd.allotment_date})});
+      closeModal(); loadSection('hostel');
+    });
+  });
+};
+window.showHostelTab = t=>{
+  ['rooms','allotments'].forEach(x=>{
+    const b=document.getElementById('tab'+x.charAt(0).toUpperCase()+x.slice(1));
+    const d2=document.getElementById('tab'+x.charAt(0).toUpperCase()+x.slice(1)+'Content');
+    if(b) b.classList.toggle('active',x===t);
+    if(d2) d2.style.display=x===t?'':'none';
+  });
+};
+window.deleteRoom = async id=>{ if(!confirm('Delete room?'))return; await API(`/api/admin/hostel/rooms/${id}`,{method:'DELETE'}); loadSection('hostel'); };
+window.vacateRoom = async id=>{ if(!confirm('Vacate?'))return; await API(`/api/admin/hostel/allotments/${id}/vacate`,{method:'PUT'}); loadSection('hostel'); };
+
+// ── TRANSPORT ────────────────────────────────────────────────────
+sections.transport = async (c) => {
+  const [rd, ad] = await Promise.all([API('/api/admin/transport/routes'),API('/api/admin/transport/allotments')]);
+  c.innerHTML = `
+    <div class="section-header"><h2>Transport Management</h2>
+      <button class="btn small" id="addRouteBtn">+ Add Route</button></div>
+    <div class="tab-bar">
+      <button class="active" id="tabTransRoutes" onclick="showTransTab('routes')">Routes (${rd.items.length})</button>
+      <button id="tabTransAllotments" onclick="showTransTab('allotments')">Allotments (${ad.items.length})</button>
+    </div>
+    <div id="tabTransRoutesContent" class="card" style="padding:0;overflow:auto">
+    <table><thead><tr><th>Route</th><th>Name</th><th>Vehicle</th><th>Driver</th><th>Enrolled</th><th>Fee</th><th>Actions</th></tr></thead>
+    <tbody>${rd.items.map(r=>`<tr><td>${r.route_no}</td><td>${r.name}</td><td>${fmt(r.vehicle_no)}</td>
+      <td>${fmt(r.driver_name)}</td><td>${r.enrolled}</td><td>₹${r.monthly_fee}</td>
+      <td class="actions">
+        <button class="icon-btn" onclick="allotTransport(${r.id},'${r.name.replace(/'/g,"\\'")}')">+ Allot</button>
+        <button class="icon-btn" onclick="deleteRoute(${r.id})">🗑️</button>
+      </td>
+    </tr>`).join('')||'<tr><td colspan="7" class="empty-msg">None</td></tr>'}
+    </tbody></table></div>
+    <div id="tabTransAllotmentsContent" class="card" style="padding:0;overflow:auto;display:none">
+    <table><thead><tr><th>Student</th><th>Roll No</th><th>Route</th><th>Stop</th><th>Date</th></tr></thead>
+    <tbody>${ad.items.map(a=>`<tr><td>${a.full_name}</td><td>${fmt(a.roll_no)}</td>
+      <td>${a.route_no} - ${a.route_name}</td><td>${fmt(a.stop_name)}</td><td>${a.allotment_date}</td>
+    </tr>`).join('')||'<tr><td colspan="5" class="empty-msg">None</td></tr>'}
+    </tbody></table></div>`;
+  $('addRouteBtn').addEventListener('click',()=>{
+    openModal('Add Transport Route',`<div class="form-grid">
+      <div class="form-group"><label>Route No *</label><input name="route_no" required placeholder="R01"/></div>
+      <div class="form-group"><label>Name *</label><input name="name" required/></div>
+      <div class="form-group"><label>Vehicle No</label><input name="vehicle_no" placeholder="MH12-AB-1234"/></div>
+      <div class="form-group"><label>Driver Name</label><input name="driver_name"/></div>
+      <div class="form-group"><label>Driver Phone</label><input name="driver_phone"/></div>
+      <div class="form-group"><label>Monthly Fee</label><input name="monthly_fee" type="number" value="800"/></div>
+      <div class="form-group cols1"><label>Stops</label><textarea name="stops" placeholder="Stop1, Stop2, Stop3"></textarea></div>
+    </div>`,
+    async()=>{ await API('/api/admin/transport/routes',{method:'POST',body:JSON.stringify(formData())}); closeModal(); loadSection('transport'); });
+  });
+};
+window.showTransTab = t=>{
+  ['routes','allotments'].forEach(x=>{
+    const cap=x.charAt(0).toUpperCase()+x.slice(1);
+    const b=document.getElementById('tabTrans'+cap);
+    const d2=document.getElementById('tabTrans'+cap+'Content');
+    if(b) b.classList.toggle('active',x===t);
+    if(d2) d2.style.display=x===t?'':'none';
+  });
+};
+window.deleteRoute = async id=>{ if(!confirm('Delete?'))return; await API(`/api/admin/transport/routes/${id}`,{method:'DELETE'}); loadSection('transport'); };
+window.allotTransport = (rid,rname)=>{
+  openModal(`Allot: ${rname}`,`<div class="form-grid cols1">
+    <div class="form-group"><label>Student Username</label><input name="student_username" required placeholder="username"/></div>
+    <div class="form-group"><label>Stop Name</label><input name="stop_name"/></div>
+  </div>`,
+  async()=>{
+    const fd=formData();
+    const ud=await API(`/api/admin/users?q=${fd.student_username}&role=student`);
+    if(!ud.users.length){alert('Student not found');return;}
+    await API('/api/admin/transport/allotments',{method:'POST',body:JSON.stringify({route_id:rid,student_user_id:ud.users[0].id,stop_name:fd.stop_name})});
+    closeModal(); loadSection('transport');
+  });
+};
+
+// ── LIBRARY ──────────────────────────────────────────────────────
+sections.library = async (c) => {
+  const [books, issues] = await Promise.all([API('/api/admin/library/books'),API('/api/admin/library/issues')]);
+  c.innerHTML = `
+    <div class="section-header"><h2>Library Management</h2>
+      <button class="btn small" id="addBookBtn">+ Add Book</button>
+      <button class="btn small secondary" id="issueBookBtn" style="margin-left:6px">📖 Issue Book</button></div>
+    <div class="tab-bar">
+      <button class="active" id="tabBooks" onclick="showLibTab('books')">Books (${books.items.length})</button>
+      <button id="tabIssues" onclick="showLibTab('issues')">Issues (${issues.items.length})</button>
+    </div>
+    <div id="tabBooksContent" class="card" style="padding:0;overflow:auto">
+    <table><thead><tr><th>Title</th><th>Author</th><th>ISBN</th><th>Category</th><th>Copies</th><th>Available</th><th>Rack</th><th>Actions</th></tr></thead>
+    <tbody>${books.items.map(b=>`<tr><td>${b.title}</td><td>${fmt(b.author)}</td><td>${fmt(b.isbn)}</td>
+      <td>${fmt(b.category)}</td><td>${b.copies}</td>
+      <td>${b.available>0?badge(b.available,'green'):badge('0','red')}</td>
+      <td>${fmt(b.rack_no)}</td>
+      <td class="actions"><button class="icon-btn" onclick="deleteBook(${b.id})">🗑️</button></td>
+    </tr>`).join('')||'<tr><td colspan="8" class="empty-msg">None</td></tr>'}
+    </tbody></table></div>
+    <div id="tabIssuesContent" class="card" style="padding:0;overflow:auto;display:none">
+    <table><thead><tr><th>Book</th><th>Student</th><th>Issue Date</th><th>Due Date</th><th>Return</th><th>Status</th><th>Actions</th></tr></thead>
+    <tbody>${issues.items.map(i=>`<tr><td>${i.book_title}</td><td>${i.full_name}</td>
+      <td>${i.issue_date}</td><td>${fmt(i.due_date)}</td><td>${fmt(i.return_date)}</td>
+      <td>${statusBadge(i.status)}</td>
+      <td class="actions">${i.status==='issued'?`<button class="icon-btn" onclick="returnBook(${i.id})">✅ Return</button>`:''}</td>
+    </tr>`).join('')||'<tr><td colspan="7" class="empty-msg">None</td></tr>'}
+    </tbody></table></div>`;
+  $('addBookBtn').addEventListener('click',()=>{
+    openModal('Add Book',`<div class="form-grid">
+      <div class="form-group"><label>Title *</label><input name="title" required/></div>
+      <div class="form-group"><label>Author</label><input name="author"/></div>
+      <div class="form-group"><label>ISBN</label><input name="isbn"/></div>
+      <div class="form-group"><label>Publisher</label><input name="publisher"/></div>
+      <div class="form-group"><label>Category</label><input name="category" placeholder="CS, Math, Science"/></div>
+      <div class="form-group"><label>Copies</label><input name="copies" type="number" value="1"/></div>
+      <div class="form-group"><label>Rack No</label><input name="rack_no" placeholder="R-A1"/></div>
+    </div>`,
+    async()=>{ await API('/api/admin/library/books',{method:'POST',body:JSON.stringify(formData())}); closeModal(); loadSection('library'); });
+  });
+  $('issueBookBtn').addEventListener('click',()=>{
+    openModal('Issue Book',`<div class="form-grid">
+      <div class="form-group"><label>Book (by title)</label><select name="book_id">${books.items.filter(b=>b.available>0).map(b=>`<option value="${b.id}">${b.title} (${b.available} avail)</option>`).join('')}</select></div>
+      <div class="form-group"><label>Student Username</label><input name="student_username" required placeholder="username"/></div>
+      <div class="form-group"><label>Due Date</label><input name="due_date" type="date"/></div>
+    </div>`,
+    async()=>{
+      const fd=formData();
+      const ud=await API(`/api/admin/users?q=${fd.student_username}`);
+      if(!ud.users.length){alert('User not found');return;}
+      await API('/api/admin/library/issues',{method:'POST',body:JSON.stringify({book_id:fd.book_id,user_id:ud.users[0].id,due_date:fd.due_date})});
+      closeModal(); loadSection('library');
+    });
+  });
+};
+window.showLibTab = t=>{
+  ['books','issues'].forEach(x=>{
+    const b=document.getElementById('tab'+x.charAt(0).toUpperCase()+x.slice(1));
+    const d2=document.getElementById('tab'+x.charAt(0).toUpperCase()+x.slice(1)+'Content');
+    if(b) b.classList.toggle('active',x===t);
+    if(d2) d2.style.display=x===t?'':'none';
+  });
+};
+window.deleteBook = async id=>{ if(!confirm('Delete book?'))return; await API(`/api/admin/library/books/${id}`,{method:'DELETE'}); loadSection('library'); };
+window.returnBook = async id=>{ await API(`/api/admin/library/issues/${id}/return`,{method:'PUT'}); loadSection('library'); };
+
+// ── STORE ────────────────────────────────────────────────────────
+sections.store = async (c) => {
+  const [items, txns] = await Promise.all([API('/api/admin/store/items'),API('/api/admin/store/transactions')]);
+  const lowStock = items.items.filter(i=>i.quantity<=i.min_quantity);
+  c.innerHTML = `
+    <div class="section-header"><h2>Store Management</h2>
+      <button class="btn small" id="addItemBtn">+ Add Item</button>
+      <button class="btn small secondary" id="addTStockBtn" style="margin-left:6px">📦 Stock In/Out</button></div>
+    ${lowStock.length?`<div class="alert warning">⚠️ Low Stock: ${lowStock.map(i=>i.name).join(', ')}</div>`:''}
+    <div class="tab-bar">
+      <button class="active" id="tabItems" onclick="showStoreTab('items')">Items (${items.items.length})</button>
+      <button id="tabStockTxns" onclick="showStoreTab('stockTxns')">Transactions (${txns.items.length})</button>
+    </div>
+    <div id="tabItemsContent" class="card" style="padding:0;overflow:auto">
+    <table><thead><tr><th>Code</th><th>Name</th><th>Category</th><th>Qty</th><th>Min Qty</th><th>Unit Price</th><th>Actions</th></tr></thead>
+    <tbody>${items.items.map(i=>`<tr><td>${i.code}</td><td>${i.name}</td><td>${fmt(i.category)}</td>
+      <td>${i.quantity<=i.min_quantity?`<span style="color:var(--danger);font-weight:500">${i.quantity}</span>`:i.quantity} ${i.unit}</td>
+      <td>${i.min_quantity}</td><td>₹${i.unit_price}</td>
+      <td class="actions"><button class="icon-btn" onclick="deleteStoreItem(${i.id})">🗑️</button></td>
+    </tr>`).join('')||'<tr><td colspan="7" class="empty-msg">None</td></tr>'}
+    </tbody></table></div>
+    <div id="tabStockTxnsContent" class="card" style="padding:0;overflow:auto;display:none">
+    <table><thead><tr><th>Item</th><th>Type</th><th>Qty</th><th>Notes</th><th>By</th><th>Date</th></tr></thead>
+    <tbody>${txns.items.map(t=>`<tr><td>${t.item_name}</td>
+      <td>${t.type==='in'?badge('Stock In','green'):badge('Stock Out','red')}</td>
+      <td>${t.quantity}</td><td>${fmt(t.notes)}</td><td>${fmt(t.created_by_name)}</td><td>${fmtDate(t.created_at)}</td>
+    </tr>`).join('')||'<tr><td colspan="6" class="empty-msg">None</td></tr>'}
+    </tbody></table></div>`;
+  $('addItemBtn').addEventListener('click',()=>{
+    openModal('Add Store Item',`<div class="form-grid">
+      <div class="form-group"><label>Code *</label><input name="code" required/></div>
+      <div class="form-group"><label>Name *</label><input name="name" required/></div>
+      <div class="form-group"><label>Category</label><input name="category"/></div>
+      <div class="form-group"><label>Unit</label><input name="unit" value="pcs"/></div>
+      <div class="form-group"><label>Initial Qty</label><input name="quantity" type="number" value="0"/></div>
+      <div class="form-group"><label>Min Qty Alert</label><input name="min_quantity" type="number" value="5"/></div>
+      <div class="form-group"><label>Unit Price</label><input name="unit_price" type="number" value="0"/></div>
+    </div>`,
+    async()=>{ await API('/api/admin/store/items',{method:'POST',body:JSON.stringify(formData())}); closeModal(); loadSection('store'); });
+  });
+  $('addTStockBtn').addEventListener('click',()=>{
+    openModal('Stock Transaction',`<div class="form-grid">
+      <div class="form-group"><label>Item *</label><select name="item_id">${items.items.map(i=>`<option value="${i.id}">${i.name} (${i.quantity} ${i.unit})</option>`).join('')}</select></div>
+      <div class="form-group"><label>Type *</label><select name="type"><option value="in">Stock In</option><option value="out">Stock Out</option></select></div>
+      <div class="form-group"><label>Quantity *</label><input name="quantity" type="number" required/></div>
+      <div class="form-group"><label>Notes</label><input name="notes"/></div>
+    </div>`,
+    async()=>{ await API('/api/admin/store/transactions',{method:'POST',body:JSON.stringify(formData())}); closeModal(); loadSection('store'); });
+  });
+};
+window.showStoreTab = t=>{
+  const items=['items','stockTxns'];
+  items.forEach(x=>{
+    const cap=x.charAt(0).toUpperCase()+x.slice(1);
+    const b=document.getElementById('tab'+cap);
+    const d2=document.getElementById('tab'+cap+'Content');
+    if(b) b.classList.toggle('active',x===t);
+    if(d2) d2.style.display=x===t?'':'none';
+  });
+};
+window.deleteStoreItem = async id=>{ if(!confirm('Delete?'))return; await API(`/api/admin/store/items/${id}`,{method:'DELETE'}); loadSection('store'); };
+
+// ── ASSETS ───────────────────────────────────────────────────────
+sections.assets = async (c) => {
+  const d = await API('/api/admin/assets');
+  c.innerHTML = `
+    <div class="section-header"><h2>Asset Management</h2>
+      <button class="btn small" id="addAssetBtn">+ Add Asset</button></div>
+    <div class="card" style="padding:0;overflow:auto">
+    <table><thead><tr><th>Code</th><th>Name</th><th>Category</th><th>Brand/Model</th><th>Location</th><th>Cost</th><th>Status</th><th>Actions</th></tr></thead>
+    <tbody>${d.items.map(a=>`<tr><td>${a.asset_code}</td><td>${a.name}</td><td>${fmt(a.category)}</td>
+      <td>${fmt(a.brand)} ${fmt(a.model)}</td><td>${fmt(a.location)}</td>
+      <td>₹${(a.purchase_cost||0).toLocaleString()}</td>
+      <td>${statusBadge(a.status)}</td>
+      <td class="actions"><button class="icon-btn" onclick="deleteAsset(${a.id})">🗑️</button></td>
+    </tr>`).join('')||'<tr><td colspan="8" class="empty-msg">None</td></tr>'}
+    </tbody></table></div>`;
+  $('addAssetBtn').addEventListener('click',()=>{
+    openModal('Add Asset',`<div class="form-grid">
+      <div class="form-group"><label>Asset Code *</label><input name="asset_code" required placeholder="AST006"/></div>
+      <div class="form-group"><label>Name *</label><input name="name" required/></div>
+      <div class="form-group"><label>Category</label><input name="category" placeholder="IT, Furniture, AV…"/></div>
+      <div class="form-group"><label>Brand</label><input name="brand"/></div>
+      <div class="form-group"><label>Model</label><input name="model"/></div>
+      <div class="form-group"><label>Serial No</label><input name="serial_no"/></div>
+      <div class="form-group"><label>Purchase Date</label><input name="purchase_date" type="date"/></div>
+      <div class="form-group"><label>Purchase Cost</label><input name="purchase_cost" type="number"/></div>
+      <div class="form-group"><label>Location</label><input name="location" placeholder="Computer Lab A"/></div>
+    </div>`,
+    async()=>{ await API('/api/admin/assets',{method:'POST',body:JSON.stringify(formData())}); closeModal(); loadSection('assets'); });
+  });
+};
+window.deleteAsset = async id=>{ if(!confirm('Delete?'))return; await API(`/api/admin/assets/${id}`,{method:'DELETE'}); loadSection('assets'); };
+
+// ── PLACEMENT ────────────────────────────────────────────────────
+sections.placement = async (c) => {
+  const [drives, apps] = await Promise.all([API('/api/admin/placement/drives'),API('/api/admin/placement/applications')]);
+  c.innerHTML = `
+    <div class="section-header"><h2>Placement Management</h2>
+      <button class="btn small" id="addDriveBtn">+ Add Drive</button></div>
+    <div class="tab-bar">
+      <button class="active" id="tabDrives" onclick="showPlaceTab('drives')">Drives (${drives.items.length})</button>
+      <button id="tabApps" onclick="showPlaceTab('apps')">Applications (${apps.items.length})</button>
+    </div>
+    <div id="tabDrivesContent" class="card" style="padding:0;overflow:auto">
+    <table><thead><tr><th>Company</th><th>Role</th><th>Package</th><th>Drive Date</th><th>Applicants</th><th>Status</th><th>Actions</th></tr></thead>
+    <tbody>${drives.items.map(d=>`<tr><td>${d.company}</td><td>${d.role}</td>
+      <td>${d.package_lpa?d.package_lpa+' LPA':'—'}</td><td>${fmt(d.drive_date)}</td>
+      <td>${d.applications}</td><td>${statusBadge(d.status)}</td>
+      <td class="actions">
+        <button class="icon-btn" onclick="closeDrive(${d.id})">✓ Close</button>
+        <button class="icon-btn" onclick="deleteDrive(${d.id})">🗑️</button>
+      </td>
+    </tr>`).join('')||'<tr><td colspan="7" class="empty-msg">None</td></tr>'}
+    </tbody></table></div>
+    <div id="tabAppsContent" class="card" style="padding:0;overflow:auto;display:none">
+    <table><thead><tr><th>Student</th><th>Roll</th><th>Company</th><th>Role</th><th>Status</th><th>Applied</th><th>Actions</th></tr></thead>
+    <tbody>${apps.items.map(a=>`<tr><td>${a.full_name}</td><td>${fmt(a.roll_no)}</td>
+      <td>${a.company}</td><td>${a.role}</td><td>${statusBadge(a.status)}</td><td>${fmtDate(a.applied_at)}</td>
+      <td class="actions">
+        <button class="icon-btn" onclick="updateAppStatus(${a.id},'shortlisted')">✓ Shortlist</button>
+        <button class="icon-btn" onclick="updateAppStatus(${a.id},'selected')">🌟 Select</button>
+        <button class="icon-btn" onclick="updateAppStatus(${a.id},'rejected')">✗ Reject</button>
+      </td>
+    </tr>`).join('')||'<tr><td colspan="7" class="empty-msg">None</td></tr>'}
+    </tbody></table></div>`;
+  $('addDriveBtn').addEventListener('click',()=>{
+    openModal('Add Placement Drive',`<div class="form-grid">
+      <div class="form-group"><label>Company *</label><input name="company" required/></div>
+      <div class="form-group"><label>Role *</label><input name="role" required/></div>
+      <div class="form-group"><label>Package (LPA)</label><input name="package_lpa" type="number" step="0.5"/></div>
+      <div class="form-group"><label>Drive Date</label><input name="drive_date" type="date"/></div>
+      <div class="form-group"><label>Last Date</label><input name="last_date" type="date"/></div>
+      <div class="form-group"><label>Location</label><input name="location"/></div>
+      <div class="form-group cols1"><label>Eligibility</label><input name="eligibility" placeholder="CSE/ECE, CGPA > 6.5"/></div>
+      <div class="form-group cols1"><label>Description</label><textarea name="description"></textarea></div>
+    </div>`,
+    async()=>{ await API('/api/admin/placement/drives',{method:'POST',body:JSON.stringify(formData())}); closeModal(); loadSection('placement'); });
+  });
+};
+window.showPlaceTab = t=>{
+  ['drives','apps'].forEach(x=>{
+    const cap=x.charAt(0).toUpperCase()+x.slice(1);
+    const b=document.getElementById('tab'+cap);
+    const d2=document.getElementById('tab'+cap+'Content');
+    if(b) b.classList.toggle('active',x===t);
+    if(d2) d2.style.display=x===t?'':'none';
+  });
+};
+window.closeDrive = async id=>{ await API(`/api/admin/placement/drives/${id}/status`,{method:'PUT',body:JSON.stringify({status:'closed'})}); loadSection('placement'); };
+window.deleteDrive = async id=>{ if(!confirm('Delete?'))return; await API(`/api/admin/placement/drives/${id}`,{method:'DELETE'}); loadSection('placement'); };
+window.updateAppStatus = async (id,s)=>{ await API(`/api/admin/placement/applications/${id}/status`,{method:'PUT',body:JSON.stringify({status:s})}); loadSection('placement'); };
+
+// ── CLIENTS ──────────────────────────────────────────────────────
+sections.clients = async (c) => {
+  const d = await API('/api/admin/clients');
+  c.innerHTML = `
+    <div class="section-header"><h2>Client Management</h2>
+      <button class="btn small" id="addClientBtn">+ Add Client</button></div>
+    <div class="card" style="padding:0;overflow:auto">
+    <table><thead><tr><th>Name</th><th>Company</th><th>Industry</th><th>Contact</th><th>Phone</th><th>Status</th><th>Actions</th></tr></thead>
+    <tbody>${d.items.map(c2=>`<tr><td>${c2.name}</td><td>${fmt(c2.company)}</td><td>${fmt(c2.industry)}</td>
+      <td>${fmt(c2.contact_person)}</td><td>${fmt(c2.phone)}</td><td>${statusBadge(c2.status)}</td>
+      <td class="actions"><button class="icon-btn" onclick="deleteClient(${c2.id})">🗑️</button></td>
+    </tr>`).join('')||'<tr><td colspan="7" class="empty-msg">None</td></tr>'}
+    </tbody></table></div>`;
+  $('addClientBtn').addEventListener('click',()=>{
+    openModal('Add Client',`<div class="form-grid">
+      <div class="form-group"><label>Name *</label><input name="name" required/></div>
+      <div class="form-group"><label>Company</label><input name="company"/></div>
+      <div class="form-group"><label>Industry</label><input name="industry"/></div>
+      <div class="form-group"><label>Contact Person</label><input name="contact_person"/></div>
+      <div class="form-group"><label>Phone</label><input name="phone"/></div>
+      <div class="form-group"><label>Email</label><input name="email" type="email"/></div>
+      <div class="form-group cols1"><label>Notes</label><textarea name="notes"></textarea></div>
+    </div>`,
+    async()=>{ await API('/api/admin/clients',{method:'POST',body:JSON.stringify(formData())}); closeModal(); loadSection('clients'); });
+  });
+};
+window.deleteClient = async id=>{ if(!confirm('Delete?'))return; await API(`/api/admin/clients/${id}`,{method:'DELETE'}); loadSection('clients'); };
+
+// ── CAMPAIGNS ────────────────────────────────────────────────────
+sections.campaigns = async (c) => {
+  const d = await API('/api/admin/campaigns');
+  c.innerHTML = `
+    <div class="section-header"><h2>Marketing Campaigns</h2>
+      <button class="btn small" id="addCampBtn">+ Create Campaign</button></div>
+    <div class="card" style="padding:0;overflow:auto">
+    <table><thead><tr><th>Title</th><th>Type</th><th>Budget</th><th>Leads</th><th>Conversions</th><th>Status</th><th>Actions</th></tr></thead>
+    <tbody>${d.items.map(c2=>`<tr><td>${c2.title}<br><small style="color:var(--muted)">${fmt(c2.target_audience)}</small></td>
+      <td>${badge(c2.type,'blue')}</td><td>₹${(c2.budget||0).toLocaleString()}</td>
+      <td>${c2.leads_generated}</td><td>${c2.conversions}</td><td>${statusBadge(c2.status)}</td>
+      <td class="actions"><button class="icon-btn" onclick="deleteCampaign(${c2.id})">🗑️</button></td>
+    </tr>`).join('')||'<tr><td colspan="7" class="empty-msg">None</td></tr>'}
+    </tbody></table></div>`;
+  $('addCampBtn').addEventListener('click',()=>{
+    openModal('Create Campaign',`<div class="form-grid">
+      <div class="form-group"><label>Title *</label><input name="title" required/></div>
+      <div class="form-group"><label>Type</label><select name="type"><option value="email">Email</option><option value="sms">SMS</option><option value="social">Social Media</option><option value="event">Event</option></select></div>
+      <div class="form-group"><label>Target Audience</label><input name="target_audience" placeholder="12th pass, Alumni..."/></div>
+      <div class="form-group"><label>Budget</label><input name="budget" type="number"/></div>
+      <div class="form-group"><label>Start Date</label><input name="start_date" type="date"/></div>
+      <div class="form-group"><label>End Date</label><input name="end_date" type="date"/></div>
+      <div class="form-group cols1"><label>Description</label><textarea name="description"></textarea></div>
+    </div>`,
+    async()=>{ await API('/api/admin/campaigns',{method:'POST',body:JSON.stringify(formData())}); closeModal(); loadSection('campaigns'); });
+  });
+};
+window.deleteCampaign = async id=>{ if(!confirm('Delete?'))return; await API(`/api/admin/campaigns/${id}`,{method:'DELETE'}); loadSection('campaigns'); };
+
+// ── DEVICES ──────────────────────────────────────────────────────
+sections.devices = async (c) => {
+  const d = await API('/api/admin/devices');
+  c.innerHTML = `
+    <div class="section-header"><h2>Biometrics & RFID Devices</h2>
+      <button class="btn small" id="addDevBtn">+ Register Device</button></div>
+    <div class="alert info" style="font-size:12.5px">
+      ℹ️ Device integration connects physical biometric/RFID hardware to the ERP for automated attendance and access control.
+    </div>
+    <div class="card" style="padding:0;overflow:auto">
+    <table><thead><tr><th>Code</th><th>Name</th><th>Type</th><th>Location</th><th>IP</th><th>Status</th><th>Last Sync</th><th>Actions</th></tr></thead>
+    <tbody>${d.items.map(dv=>`<tr><td>${dv.device_code}</td><td>${dv.name}</td>
+      <td>${badge(dv.type,'blue')}</td><td>${fmt(dv.location)}</td><td>${fmt(dv.ip_address)}</td>
+      <td>${statusBadge(dv.status)}</td><td>${fmtDate(dv.last_sync)}</td>
+      <td class="actions">
+        <button class="icon-btn" onclick="syncDevice(${dv.id})">🔄 Sync</button>
+        <button class="icon-btn" onclick="deleteDevice(${dv.id})">🗑️</button>
+      </td>
+    </tr>`).join('')||'<tr><td colspan="8" class="empty-msg">None</td></tr>'}
+    </tbody></table></div>`;
+  $('addDevBtn').addEventListener('click',()=>{
+    openModal('Register Device',`<div class="form-grid">
+      <div class="form-group"><label>Device Code *</label><input name="device_code" required placeholder="DEV005"/></div>
+      <div class="form-group"><label>Name *</label><input name="name" required/></div>
+      <div class="form-group"><label>Type</label><select name="type"><option value="biometric">Biometric</option><option value="rfid">RFID</option><option value="camera">Camera</option></select></div>
+      <div class="form-group"><label>Location</label><input name="location" placeholder="Main Gate"/></div>
+      <div class="form-group"><label>IP Address</label><input name="ip_address" placeholder="192.168.1.105"/></div>
+    </div>`,
+    async()=>{ await API('/api/admin/devices',{method:'POST',body:JSON.stringify(formData())}); closeModal(); loadSection('devices'); });
+  });
+};
+window.syncDevice = async id=>{ await API(`/api/admin/devices/${id}`,{method:'PUT',body:JSON.stringify({})}); alert('Sync simulated successfully!'); loadSection('devices'); };
+window.deleteDevice = async id=>{ if(!confirm('Remove?'))return; await API(`/api/admin/devices/${id}`,{method:'DELETE'}); loadSection('devices'); };
+
+// ── SCHOOLS ──────────────────────────────────────────────────────
+sections.schools = async (c) => {
+  const d = await API('/api/admin/schools');
+  c.innerHTML = `
+    <div class="section-header"><h2>Multi-School Management</h2>
+      <button class="btn small" id="addSchoolBtn">+ Add School</button></div>
+    <div class="card" style="padding:0;overflow:auto">
+    <table><thead><tr><th>Code</th><th>Name</th><th>Principal</th><th>Phone</th><th>Status</th><th>Actions</th></tr></thead>
+    <tbody>${d.items.map(s=>`<tr><td>${s.code}</td><td>${s.name}<br><small style="color:var(--muted)">${fmt(s.address)}</small></td>
+      <td>${fmt(s.principal)}</td><td>${fmt(s.phone)}</td><td>${s.is_active?badge('Active','green'):badge('Inactive','gray')}</td>
+      <td class="actions"><button class="icon-btn" onclick="deleteSchool(${s.id})">🗑️</button></td>
+    </tr>`).join('')||'<tr><td colspan="6" class="empty-msg">None</td></tr>'}
+    </tbody></table></div>`;
+  $('addSchoolBtn').addEventListener('click',()=>{
+    openModal('Add School/Branch',`<div class="form-grid">
+      <div class="form-group"><label>Code *</label><input name="code" required placeholder="BRANCH1"/></div>
+      <div class="form-group"><label>Name *</label><input name="name" required/></div>
+      <div class="form-group"><label>Address</label><input name="address"/></div>
+      <div class="form-group"><label>Phone</label><input name="phone"/></div>
+      <div class="form-group"><label>Email</label><input name="email" type="email"/></div>
+      <div class="form-group"><label>Principal</label><input name="principal"/></div>
+      <div class="form-group"><label>Established Year</label><input name="established" type="number"/></div>
+    </div>`,
+    async()=>{ await API('/api/admin/schools',{method:'POST',body:JSON.stringify(formData())}); closeModal(); loadSection('schools'); });
+  });
+};
+window.deleteSchool = async id=>{ if(!confirm('Delete?'))return; await API(`/api/admin/schools/${id}`,{method:'DELETE'}); loadSection('schools'); };
+
+// ── REPORTS ──────────────────────────────────────────────────────
+sections.reports = async (c) => {
+  const [enroll, fees, att, results] = await Promise.all([
+    API('/api/admin/reports/enrollment'),
+    API('/api/admin/reports/fees'),
+    API('/api/admin/reports/attendance'),
+    API('/api/admin/reports/results'),
+  ]);
+  c.innerHTML = `
+    <div class="page-title"><h2>MIS Reports & Analytics</h2></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div class="card"><h3 style="margin:0 0 10px;font-size:14px">Enrollment by Department</h3>
+        <table><thead><tr><th>Department</th><th>Students</th></tr></thead>
+        <tbody>${enroll.by_department.map(r=>`<tr><td>${fmt(r.department)||'Unknown'}</td><td>${r.count}</td></tr>`).join('')||'<tr><td colspan="2" class="empty-msg">No data</td></tr>'}</tbody></table>
+      </div>
+      <div class="card"><h3 style="margin:0 0 10px;font-size:14px">Enrollment by Semester</h3>
+        <table><thead><tr><th>Semester</th><th>Students</th></tr></thead>
+        <tbody>${enroll.by_semester.map(r=>`<tr><td>Sem ${r.semester}</td><td>${r.count}</td></tr>`).join('')||'<tr><td colspan="2" class="empty-msg">No data</td></tr>'}</tbody></table>
+      </div>
+      <div class="card"><h3 style="margin:0 0 10px;font-size:14px">Monthly Fee Collection</h3>
+        <table><thead><tr><th>Month</th><th>Amount</th><th>Transactions</th></tr></thead>
+        <tbody>${fees.monthly.map(r=>`<tr><td>${r.month}</td><td>₹${r.total?.toLocaleString()}</td><td>${r.count}</td></tr>`).join('')||'<tr><td colspan="3" class="empty-msg">No data</td></tr>'}</tbody></table>
+      </div>
+      <div class="card"><h3 style="margin:0 0 10px;font-size:14px">Grade Distribution</h3>
+        <table><thead><tr><th>Grade</th><th>Count</th></tr></thead>
+        <tbody>${results.by_grade.map(r=>`<tr><td>${badge(r.grade,'blue')}</td><td>${r.count}</td></tr>`).join('')||'<tr><td colspan="2" class="empty-msg">No data</td></tr>'}</tbody></table>
+      </div>
+      <div class="card" style="grid-column:1/-1"><h3 style="margin:0 0 10px;font-size:14px">Attendance by Course</h3>
+        <table><thead><tr><th>Course</th><th>Total Classes</th><th>Present</th><th>Attendance Rate</th></tr></thead>
+        <tbody>${att.by_course.map(r=>`<tr><td>${r.course_code}</td><td>${r.total}</td><td>${r.present}</td>
+          <td><div style="display:flex;align-items:center;gap:8px"><div class="progress-bar"><div class="fill" style="width:${r.rate||0}%"></div></div>${r.rate||0}%</div></td>
+        </tr>`).join('')||'<tr><td colspan="4" class="empty-msg">No attendance data</td></tr>'}</tbody></table>
+      </div>
+    </div>`;
+};
+
+// ── ACTIVITY LOGS ────────────────────────────────────────────────
+sections.logs = async (c) => {
+  const d = await API('/api/admin/activity-logs');
+  c.innerHTML = `
+    <div class="section-header"><h2>Activity Logs <span class="badge blue">${d.total}</span></h2></div>
+    <div class="card" style="padding:0;overflow:auto">
+    <table><thead><tr><th>User</th><th>Role</th><th>Action</th><th>Entity</th><th>Details</th><th>IP</th><th>Time</th></tr></thead>
+    <tbody>${d.items.map(l=>`<tr>
+      <td>${l.full_name||'System'}</td><td>${l.role?badge(l.role,'gray'):'—'}</td>
+      <td>${l.action}</td><td>${fmt(l.entity)}</td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${fmt(l.details)}</td>
+      <td>${fmt(l.ip_address)}</td><td>${l.created_at}</td>
+    </tr>`).join('')||'<tr><td colspan="7" class="empty-msg">None</td></tr>'}
+    </tbody></table></div>`;
+};
+
+// ── EXPORT ───────────────────────────────────────────────────────
+sections.export = (c) => {
+  c.innerHTML = `
+    <div class="page-title"><h2>Data Export & Import</h2></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div class="card">
+        <h3 style="margin:0 0 12px;font-size:14px">Export Data</h3>
+        <p class="sub" style="margin-bottom:16px">Download data as CSV files for use in Excel or other tools.</p>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <a href="/api/admin/export/students" class="btn secondary" style="text-align:center">⬇ Export Students CSV</a>
+          <a href="/api/admin/export/fees" class="btn secondary" style="text-align:center">⬇ Export Fees CSV</a>
+        </div>
+      </div>
+      <div class="card">
+        <h3 style="margin:0 0 12px;font-size:14px">Import Data</h3>
+        <p class="sub" style="margin-bottom:16px">Bulk import students or other records from CSV files.</p>
+        <div class="form-group" style="margin-bottom:12px">
+          <label>Select CSV File</label>
+          <input type="file" id="importFile" accept=".csv" style="background:var(--bg);padding:6px;border:1px solid var(--border);border-radius:6px;color:var(--fg);width:100%"/>
+        </div>
+        <div class="form-group" style="margin-bottom:12px">
+          <label>Import Type</label>
+          <select id="importType" style="background:var(--bg);border:1px solid var(--border);color:var(--fg);border-radius:6px;padding:6px 10px;font-size:13px">
+            <option value="students">Students</option>
+          </select>
+        </div>
+        <button class="btn" id="importBtn">Upload & Import</button>
+        <div id="importResult" style="margin-top:10px;font-size:12px;color:var(--muted)"></div>
+      </div>
+    </div>`;
+  $('importBtn').addEventListener('click', () => {
+    $('importResult').textContent = 'CSV import via bulk file upload. Currently use the API endpoints to add individual records. Full bulk CSV import can be connected here.';
+  });
+};
+
+// ── BACKUP ───────────────────────────────────────────────────────
+sections.backup = (c) => {
+  c.innerHTML = `
+    <div class="page-title"><h2>Backup & Recovery</h2></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div class="card">
+        <h3 style="margin:0 0 12px;font-size:14px">Database Backup</h3>
+        <p class="sub" style="margin-bottom:16px">Download a complete snapshot of the SQLite database file. Store it securely.</p>
+        <a href="/api/admin/backup" class="btn" style="display:inline-block">⬇ Download DB Backup</a>
+      </div>
+      <div class="card">
+        <h3 style="margin:0 0 12px;font-size:14px">Security Features</h3>
+        <ul style="color:var(--muted);font-size:13px;line-height:2">
+          <li>✅ bcrypt password hashing (cost 10)</li>
+          <li>✅ Session-based authentication</li>
+          <li>✅ Role-based access control</li>
+          <li>✅ Activity audit logging</li>
+          <li>✅ IP address logging</li>
+          <li>✅ 8-hour session expiry</li>
+          <li>✅ CSRF protection via same-origin</li>
+          <li>⚙️ 2FA: configurable in settings</li>
+          <li>⚙️ Rate limiting: add via nginx</li>
+          <li>⚙️ HTTPS: configure before production</li>
+        </ul>
+      </div>
+    </div>`;
+};
+
+// ── SETTINGS ─────────────────────────────────────────────────────
+sections.settings = async (c) => {
+  const d = await API('/api/admin/settings');
+  const s = d.settings;
+  c.innerHTML = `
+    <div class="section-header"><h2>School Settings</h2>
+      <button class="btn small" id="saveSettingsBtn">💾 Save All</button></div>
+    <div class="card">
+      <h3 style="margin:0 0 16px;font-size:14px">Institution Details</h3>
+      <div class="form-grid">
+        ${[['institution_name','Institution Name','text'],['academic_year','Academic Year','text'],['support_email','Support Email','email'],
+           ['currency','Currency','text'],['timezone','Timezone','text']].map(([k,l,t])=>`
+          <div class="form-group"><label>${l}</label><input type="${t}" name="${k}" value="${s[k]||''}"/></div>`).join('')}
+      </div>
+      <h3 style="margin:16px 0 12px;font-size:14px">Security & System</h3>
+      <div class="form-grid">
+        ${[['maintenance_mode','Maintenance Mode'],['sms_provider','SMS Provider'],
+           ['session_timeout','Session Timeout (min)'],['max_login_attempts','Max Login Attempts'],
+           ['two_factor_auth','Two-Factor Auth']].map(([k,l])=>`
+          <div class="form-group"><label>${l}</label><input name="${k}" value="${s[k]||''}"/></div>`).join('')}
+      </div>
+    </div>`;
+  $('saveSettingsBtn').addEventListener('click', async () => {
+    const data={};
+    document.querySelectorAll('#appContent input[name]').forEach(i=>{ data[i.name]=i.value; });
+    await API('/api/admin/settings',{method:'PUT',body:JSON.stringify(data)});
+    alert('Settings saved!');
+  });
+};
+
+// ── PERMISSIONS ──────────────────────────────────────────────────
+sections.permissions = async (c) => {
+  const d = await API('/api/admin/permissions');
+  c.innerHTML = `
+    <div class="section-header"><h2>Role Permissions</h2>
+      <button class="btn small" id="addPermBtn">+ Add Permission</button></div>
+    <div class="card" style="padding:0;overflow:auto">
+    <table><thead><tr><th>Role</th><th>Module</th><th>View</th><th>Create</th><th>Edit</th><th>Delete</th></tr></thead>
+    <tbody>${d.items.map(p=>`<tr><td>${badge(p.role,'blue')}</td><td>${p.module}</td>
+      <td>${p.can_view?'✅':'❌'}</td><td>${p.can_create?'✅':'❌'}</td>
+      <td>${p.can_edit?'✅':'❌'}</td><td>${p.can_delete?'✅':'❌'}</td>
+    </tr>`).join('')||'<tr><td colspan="6" class="empty-msg">No permissions configured</td></tr>'}
+    </tbody></table></div>`;
+  $('addPermBtn').addEventListener('click',()=>{
+    openModal('Set Permission',`<div class="form-grid">
+      <div class="form-group"><label>Role *</label><select name="role"><option value="faculty">Faculty</option><option value="principal">Principal</option><option value="student">Student</option><option value="parent">Parent</option></select></div>
+      <div class="form-group"><label>Module *</label><input name="module" required placeholder="fees, attendance..."/></div>
+      <div class="form-group"><label>Can View</label><select name="can_view"><option value="1">Yes</option><option value="0">No</option></select></div>
+      <div class="form-group"><label>Can Create</label><select name="can_create"><option value="1">Yes</option><option value="0">No</option></select></div>
+      <div class="form-group"><label>Can Edit</label><select name="can_edit"><option value="1">Yes</option><option value="0">No</option></select></div>
+      <div class="form-group"><label>Can Delete</label><select name="can_delete"><option value="0">No</option><option value="1">Yes</option></select></div>
+    </div>`,
+    async()=>{ await API('/api/admin/permissions',{method:'POST',body:JSON.stringify(formData())}); closeModal(); loadSection('permissions'); });
+  });
+};
+
+// ── TIMETABLE ────────────────────────────────────────────────────
+sections.timetable = async (c) => {
+  const bd = await API('/api/admin/batches');
+  c.innerHTML = `
+    <div class="section-header"><h2>Timetable</h2></div>
+    <div class="filter-bar">
+      <select id="ttBatch">
+        <option value="">Select Batch</option>
+        ${bd.items.map(b=>`<option value="${b.id}">${b.code} - ${b.name}</option>`).join('')}
+      </select>
+      <button class="btn small" id="ttLoad">Load</button>
+      <button class="btn small secondary" id="ttAdd">+ Add Period</button>
+    </div>
+    <div id="ttTable" class="card" style="padding:0;overflow:auto">
+      <div class="empty-msg">Select a batch to view timetable.</div>
+    </div>`;
+  $('ttLoad').addEventListener('click', async ()=>{
+    const bid=$('ttBatch').value;
+    const d=await API(`/api/admin/timetable?batch_id=${bid}`);
+    $('ttTable').innerHTML=d.items.length?
+      `<table><thead><tr><th>Day</th><th>Period</th><th>Time</th><th>Course</th><th>Faculty</th><th>Room</th><th>Actions</th></tr></thead>
+      <tbody>${d.items.map(t=>`<tr><td>${t.day}</td><td>${t.period}</td><td>${fmt(t.start_time)}–${fmt(t.end_time)}</td>
+        <td>${fmt(t.course_code)}</td><td>${fmt(t.faculty_name)}</td><td>${fmt(t.room)}</td>
+        <td class="actions"><button class="icon-btn" onclick="deleteTT(${t.id})">🗑️</button></td>
+      </tr>`).join('')}</tbody></table>`:
+      '<div class="empty-msg">No timetable entries. Click "+ Add Period" to add.</div>';
+  });
+  $('ttAdd').addEventListener('click',()=>{
+    openModal('Add Timetable Entry',`<div class="form-grid">
+      <div class="form-group"><label>Batch</label><select name="batch_id">${bd.items.map(b=>`<option value="${b.id}">${b.code}</option>`).join('')}</select></div>
+      <div class="form-group"><label>Day *</label><select name="day"><option>Monday</option><option>Tuesday</option><option>Wednesday</option><option>Thursday</option><option>Friday</option><option>Saturday</option></select></div>
+      <div class="form-group"><label>Period *</label><input name="period" type="number" min="1" max="8" required/></div>
+      <div class="form-group"><label>Start Time</label><input name="start_time" placeholder="09:00"/></div>
+      <div class="form-group"><label>End Time</label><input name="end_time" placeholder="10:00"/></div>
+      <div class="form-group"><label>Course Code</label><input name="course_code" placeholder="CSE201"/></div>
+      <div class="form-group"><label>Room</label><input name="room" placeholder="Room 101"/></div>
+    </div>`,
+    async()=>{ await API('/api/admin/timetable',{method:'POST',body:JSON.stringify(formData())}); closeModal(); $('ttLoad').click(); });
+  });
+};
+window.deleteTT = async id=>{ if(!confirm('Delete?'))return; await API(`/api/admin/timetable/${id}`,{method:'DELETE'}); document.getElementById('ttLoad')?.click(); };
+
+// ── REMINDERS ────────────────────────────────────────────────────
+sections.reminders = async (c) => {
+  const d = await API('/api/admin/reminders');
+  c.innerHTML = `
+    <div class="section-header"><h2>Scheduler & Reminders</h2>
+      <button class="btn small" id="addReminderBtn">+ Add Reminder</button></div>
+    <div class="card" style="padding:0;overflow:auto">
+    <table><thead><tr><th>Title</th><th>User</th><th>Remind At</th><th>Repeat</th><th>Status</th></tr></thead>
+    <tbody>${d.items.map(r=>`<tr><td>${r.title}<br><small style="color:var(--muted)">${fmt(r.description)}</small></td>
+      <td>${fmt(r.full_name)}</td><td>${r.remind_at}</td><td>${r.repeat}</td>
+      <td>${r.is_done?badge('Done','green'):badge('Pending','yellow')}</td>
+    </tr>`).join('')||'<tr><td colspan="5" class="empty-msg">No pending reminders</td></tr>'}
+    </tbody></table></div>`;
+  $('addReminderBtn').addEventListener('click',()=>{
+    openModal('Add Reminder',`<div class="form-grid cols1">
+      <div class="form-group"><label>Title *</label><input name="title" required/></div>
+      <div class="form-group"><label>Description</label><textarea name="description"></textarea></div>
+      <div class="form-group"><label>Remind At *</label><input name="remind_at" type="datetime-local" required/></div>
+      <div class="form-group"><label>Repeat</label><select name="repeat"><option value="none">None</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></div>
+    </div>`,
+    async()=>{ await API('/api/admin/reminders',{method:'POST',body:JSON.stringify(formData())}); closeModal(); loadSection('reminders'); });
+  });
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// MEDICAL COLLEGE — Clinical Postings / Logbooks
+// ═══════════════════════════════════════════════════════════════════
+
+// ── CLINICAL POSTINGS ────────────────────────────────────────────
+sections.clinicalPostings = async (c) => {
+  const render = async () => {
+    const [d, depts, batches] = await Promise.all([
+      API('/api/admin/clinical-postings'),
+      API('/api/admin/departments'),
+      API('/api/admin/batches'),
+    ]);
+    const clinDepts = (depts.departments||depts.items||[]).filter(x => x.category === 'clinical' || x.category === 'para-clinical' || !x.category);
+    c.innerHTML = `
+      <div class="section-header"><h2>Clinical Postings <span class="badge blue">${d.items.length}</span></h2>
+        <button class="btn small" id="addPostBtn">+ Schedule Posting</button></div>
+      <div class="card" style="padding:0;overflow:auto">
+      <table><thead><tr>
+        <th>Department</th><th>Ward</th><th>Batch / Student</th><th>Period</th><th>Shift</th><th>Supervisor</th><th>Status</th><th>Actions</th>
+      </tr></thead><tbody>
+      ${d.items.map(p=>`<tr>
+        <td><strong>${p.department||p.dept_name||'—'}</strong></td>
+        <td>${fmt(p.ward)}</td>
+        <td>${p.student_name ? p.student_name+'<br><small style="color:var(--muted)">'+fmt(p.roll_no)+'</small>' : (p.batch_name||'—')}</td>
+        <td>${fmtDate(p.start_date)} → ${fmtDate(p.end_date)}</td>
+        <td>${fmt(p.shift)}</td>
+        <td>${fmt(p.supervisor_name)}</td>
+        <td>${statusBadge(p.status)}</td>
+        <td class="actions">
+          <button class="icon-btn" onclick="deletePosting(${p.id})">🗑️</button>
+        </td>
+      </tr>`).join('')||'<tr><td colspan="8" class="empty-msg">No clinical postings scheduled</td></tr>'}
+      </tbody></table></div>`;
+
+    $('addPostBtn').addEventListener('click', () => {
+      const deptOpts = clinDepts.map(x=>`<option value="${x.id}">${x.name}</option>`).join('');
+      const batchOpts = (batches.items||batches.batches||[]).map(b=>`<option value="${b.id}">${b.name}</option>`).join('');
+      openModal('Schedule Clinical Posting', `
+        <div class="form-grid">
+          <div class="form-group"><label>Department *</label><select name="department_id" required><option value="">— Select —</option>${deptOpts}</select></div>
+          <div class="form-group"><label>Batch (or leave empty for individual)</label><select name="batch_id"><option value="">—</option>${batchOpts}</select></div>
+          <div class="form-group"><label>Ward</label><input name="ward" placeholder="e.g. MICU / OBG Ward"/></div>
+          <div class="form-group"><label>Shift</label><select name="shift"><option value="morning">Morning</option><option value="evening">Evening</option><option value="night">Night</option></select></div>
+          <div class="form-group"><label>Start Date *</label><input name="start_date" type="date" required/></div>
+          <div class="form-group"><label>End Date *</label><input name="end_date" type="date" required/></div>
+          <div class="form-group" style="grid-column:1/-1"><label>Notes</label><textarea name="notes" rows="2"></textarea></div>
+        </div>`,
+        async () => {
+          await API('/api/admin/clinical-postings', { method:'POST', body: JSON.stringify(formData()) });
+          closeModal(); render();
+        });
+    });
+  };
+  await render();
+};
+window.deletePosting = async (id) => {
+  if(!confirm('Delete this posting?')) return;
+  await API(`/api/admin/clinical-postings/${id}`,{method:'DELETE'});
+  loadSection('clinicalPostings');
+};
+
+// ── CASE LOGBOOK ─────────────────────────────────────────────────
+sections.caseLogs = async (c) => {
+  let status = '';
+  const render = async () => {
+    const d = await API(`/api/admin/case-logs${status?`?status=${status}`:''}`);
+    c.innerHTML = `
+      <div class="section-header"><h2>Case Logbook <span class="badge blue">${d.items.length}</span></h2></div>
+      <div class="filter-bar">
+        <select id="cStatus"><option value="">All Statuses</option><option value="pending">Pending</option><option value="verified">Verified</option><option value="rejected">Rejected</option></select>
+      </div>
+      <div class="card" style="padding:0;overflow:auto">
+      <table><thead><tr><th>Date</th><th>Student</th><th>Patient</th><th>Department</th><th>Diagnosis</th><th>Supervisor</th><th>Status</th><th></th></tr></thead>
+      <tbody>${d.items.map(cl=>`<tr>
+        <td>${fmtDate(cl.case_date)}</td>
+        <td>${cl.student_name}<br><small style="color:var(--muted)">${fmt(cl.roll_no)}</small></td>
+        <td>${fmt(cl.patient_code)} <small style="color:var(--muted)">(${fmt(cl.age)}${cl.gender?'/'+cl.gender.charAt(0):''})</small></td>
+        <td>${fmt(cl.department)}</td>
+        <td>${fmt(cl.diagnosis)}</td>
+        <td>${fmt(cl.supervisor_name)}</td>
+        <td>${statusBadge(cl.status)}</td>
+        <td class="actions"><button class="icon-btn" onclick="deleteCaseLog(${cl.id})">🗑️</button></td>
+      </tr>`).join('')||'<tr><td colspan="8" class="empty-msg">No case log entries</td></tr>'}
+      </tbody></table></div>`;
+    $('cStatus').value = status;
+    $('cStatus').addEventListener('change', e => { status = e.target.value; render(); });
+  };
+  await render();
+};
+window.deleteCaseLog = async (id) => {
+  if(!confirm('Delete this case log entry?')) return;
+  await API(`/api/admin/case-logs/${id}`,{method:'DELETE'}); loadSection('caseLogs');
+};
+
+// ── PROCEDURE LOGBOOK ────────────────────────────────────────────
+sections.procedureLogs = async (c) => {
+  let level = '', status = '';
+  const render = async () => {
+    const qs = [];
+    if (level) qs.push(`level=${level}`);
+    if (status) qs.push(`status=${status}`);
+    const d = await API(`/api/admin/procedure-logs${qs.length?`?${qs.join('&')}`:''}`);
+    c.innerHTML = `
+      <div class="section-header"><h2>Procedure Logbook <span class="badge blue">${d.items.length}</span></h2></div>
+      <div class="filter-bar">
+        <select id="pLevel"><option value="">All Levels</option><option value="observed">Observed</option><option value="assisted">Assisted</option><option value="performed">Performed</option></select>
+        <select id="pStatus"><option value="">All Statuses</option><option value="pending">Pending</option><option value="verified">Verified</option><option value="rejected">Rejected</option></select>
+      </div>
+      <div class="card" style="padding:0;overflow:auto">
+      <table><thead><tr><th>Date</th><th>Student</th><th>Procedure</th><th>Department</th><th>Level</th><th>Supervisor</th><th>Status</th><th></th></tr></thead>
+      <tbody>${d.items.map(p=>`<tr>
+        <td>${fmtDate(p.procedure_date)}</td>
+        <td>${p.student_name}<br><small style="color:var(--muted)">${fmt(p.roll_no)}</small></td>
+        <td>${p.procedure_name}</td>
+        <td>${fmt(p.department)}</td>
+        <td>${badge(p.level, p.level==='performed'?'green':p.level==='assisted'?'blue':'gray')}</td>
+        <td>${fmt(p.supervisor_name)}</td>
+        <td>${statusBadge(p.status)}</td>
+        <td class="actions"><button class="icon-btn" onclick="deleteProcLog(${p.id})">🗑️</button></td>
+      </tr>`).join('')||'<tr><td colspan="8" class="empty-msg">No procedure log entries</td></tr>'}
+      </tbody></table></div>`;
+    $('pLevel').value = level; $('pStatus').value = status;
+    $('pLevel').addEventListener('change', e => { level = e.target.value; render(); });
+    $('pStatus').addEventListener('change', e => { status = e.target.value; render(); });
+  };
+  await render();
+};
+window.deleteProcLog = async (id) => {
+  if(!confirm('Delete this procedure log entry?')) return;
+  await API(`/api/admin/procedure-logs/${id}`,{method:'DELETE'}); loadSection('procedureLogs');
+};
+
+// ── CBME COMPLIANCE REPORT ───────────────────────────────────────
+sections.cbmeReport = async (c) => {
+  const d = await API('/api/admin/cbme-report');
+  c.innerHTML = `
+    <div class="section-header"><h2>CBME Compliance — Case &amp; Procedure Logs per Student</h2></div>
+    <div class="alert info">CBME logbook tracking per NMC guidelines. Target: minimum number of verified cases &amp; procedures per MBBS year.</div>
+    <div class="card" style="padding:0;overflow:auto">
+    <table><thead><tr>
+      <th>Student</th><th>Roll No</th><th>Year</th>
+      <th>Cases (Verified / Total)</th>
+      <th>Procedures Total</th>
+      <th>Performed</th><th>Assisted</th><th>Observed</th>
+    </tr></thead><tbody>
+    ${d.items.map(s=>`<tr>
+      <td><strong>${s.full_name}</strong></td>
+      <td>${fmt(s.roll_no)}</td>
+      <td>${s.mbbs_year?badge('Year '+s.mbbs_year,'blue'):'—'}</td>
+      <td>${s.cases_verified||0} / ${s.cases_total||0}</td>
+      <td>${s.proc_total||0}</td>
+      <td>${badge(s.proc_performed||0,'green')}</td>
+      <td>${badge(s.proc_assisted||0,'blue')}</td>
+      <td>${badge(s.proc_observed||0,'gray')}</td>
+    </tr>`).join('')||'<tr><td colspan="8" class="empty-msg">No data</td></tr>'}
+    </tbody></table></div>`;
+};
+
+// ─────────────────────────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────────────────────────
+fetch('/api/me').then(r=>r.json()).then(d=>{
+  if(!d.user) return location.href='/login.html';
+  $('whoName').textContent = d.user.full_name;
+  $('avatar').textContent = d.user.full_name.charAt(0).toUpperCase();
+});
+$('logoutBtn').addEventListener('click', async ()=>{
+  await fetch('/api/logout',{method:'POST'}); location.href='/login.html';
+});
+loadSection('dashboard');
+</script>
+</body>
+</html>

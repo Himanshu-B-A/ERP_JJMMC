@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>JJMMC Medical College · Faculty</title>
+<link rel="stylesheet" href="/css/style.css"/>
+<style>
+/* Faculty portal page-specific overrides (global UI in style.css) */
+</style>
+</head>
+<body>
+<div class="shell">
+<aside class="sidebar">
+  <div class="brand">
+    <div class="brand-logo">JJ</div>
+    <div><h1 style="font-size:14px">Faculty Portal</h1><small>JJMMC Medical College</small></div>
+  </div>
+  <nav class="nav" id="sideNav">
+    <div style="padding:4px 0">
+      <div style="font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--muted);padding:10px 16px 4px;text-transform:uppercase">Main</div>
+      <a href="#" data-sec="dashboard" class="active">Dashboard</a>
+      <a href="#" data-sec="attendance">Mark Attendance</a>
+      <a href="#" data-sec="attendanceReport">Attendance Report</a>
+      <a href="#" data-sec="results">Enter Marks</a>
+      <a href="#" data-sec="lectures">My Lectures</a>
+      <a href="#" data-sec="studyMaterial">Study Material</a>
+      <a href="#" data-sec="onlineExams">Online MCQ Exams</a>
+      <a href="#" data-sec="lms">My LMS Courses</a>
+      <div style="font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--muted);padding:10px 16px 4px;text-transform:uppercase">Clinical (Medical)</div>
+      <a href="#" data-sec="clinicalPostings">Clinical Postings</a>
+      <a href="#" data-sec="verifyCaseLogs">Verify Case Logs</a>
+      <a href="#" data-sec="verifyProcLogs">Verify Procedure Logs</a>
+      <div style="font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--muted);padding:10px 16px 4px;text-transform:uppercase">More</div>
+      <a href="#" data-sec="dailyReport">Daily Report</a>
+      <a href="#" data-sec="reminders">Reminders</a>
+      <a href="#" data-sec="notifications">Notifications</a>
+      <a href="#" data-sec="profile">My Profile</a>
+    </div>
+  </nav>
+</aside>
+<section class="main">
+  <div class="topbar">
+    <div class="crumbs" id="crumb">Dashboard</div>
+    <div class="who">
+      <div class="avatar" id="avatar">F</div>
+      <div style="line-height:1.1">
+        <div id="whoName" style="font-weight:700;font-size:13px">Faculty</div>
+        <div style="color:var(--muted);font-size:11px">faculty</div>
+      </div>
+      <button class="btn small secondary" id="logoutBtn">Logout</button>
+    </div>
+  </div>
+  <div class="content" id="appContent"><div class="empty-msg">Loading…</div></div>
+</section>
+</div>
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal" id="modalBox">
+    <h3 id="modalTitle">Form</h3>
+    <div id="modalBody"></div>
+    <div class="modal-actions">
+      <button class="btn small secondary" id="modalCancel">Cancel</button>
+      <button class="btn small" id="modalSubmit">Save</button>
+    </div>
+  </div>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+const API = async (url, opts={}) => {
+  const r = await fetch(url, { headers:{'Content-Type':'application/json'}, ...opts });
+  const j = await r.json().catch(()=>({}));
+  if (!r.ok) { alert(j.error||'Error'); throw new Error(j.error); }
+  return j;
+};
+const fmt = v => v==null?'—':v;
+const fmtDate = d => d?d.split('T')[0]:'—';
+const badge = (t,c='gray') => `<span class="badge ${c}">${t}</span>`;
+const statusBadge = s => {
+  const m={present:'green',absent:'red',late:'yellow',published:'green',draft:'yellow',submitted:'green','in-progress':'blue'};
+  return badge(s, m[s]||'gray');
+};
+let modalCb=null;
+function openModal(title,html,cb){ $('modalTitle').textContent=title; $('modalBody').innerHTML=html; modalCb=cb; $('modalOverlay').classList.add('open'); }
+function closeModal(){ $('modalOverlay').classList.remove('open'); }
+$('modalCancel').addEventListener('click',closeModal);
+$('modalOverlay').addEventListener('click',e=>{ if(e.target===$('modalOverlay'))closeModal(); });
+$('modalSubmit').addEventListener('click',()=>{ if(modalCb)modalCb(); });
+function formData(){ const fd={}; document.querySelectorAll('#modalBody input,#modalBody select,#modalBody textarea').forEach(i=>{ if(i.name) fd[i.name]=i.value.trim(); }); return fd; }
+
+let currentSection='dashboard';
+document.getElementById('sideNav').addEventListener('click', e=>{
+  const a=e.target.closest('[data-sec]'); if(!a)return; e.preventDefault();
+  document.querySelectorAll('#sideNav a').forEach(x=>x.classList.remove('active'));
+  a.classList.add('active'); $('crumb').textContent=a.textContent.trim();
+  currentSection=a.dataset.sec; loadSection(currentSection);
+});
+
+const sections={};
+
+sections.dashboard = async c => {
+  const d = await API('/api/faculty/stats');
+  c.innerHTML=`
+    <div class="page-title"><h2>My Week</h2><p style="color:var(--muted);font-size:13px;margin:4px 0 0">JJMMC Medical College · Faculty Dashboard</p></div>
+    <div class="stat-cards">
+      <div class="stat-card"><div class="label">📚 Lectures Today</div><div class="value">${d.my_lectures_today}</div></div>
+      <div class="stat-card"><div class="label">📖 Total Lectures</div><div class="value">${d.total_lectures}</div></div>
+      <div class="stat-card"><div class="label">📝 Online Exams</div><div class="value">${d.my_online_exams}</div></div>
+      <div class="stat-card"><div class="label">📎 Study Materials</div><div class="value">${d.study_materials}</div></div>
+      <div class="stat-card"><div class="label">🩺 Active Postings</div><div class="value" style="color:var(--primary)">${d.active_postings||0}</div></div>
+      <div class="stat-card"><div class="label">📋 Pending Case Logs</div><div class="value" style="color:var(--warning)">${d.pending_case_logs||0}</div></div>
+      <div class="stat-card"><div class="label">🔧 Pending Procedures</div><div class="value" style="color:var(--warning)">${d.pending_proc_logs||0}</div></div>
+      <div class="stat-card"><div class="label">🎓 LMS Courses</div><div class="value">${d.my_lms_courses||0}</div></div>
+    </div>
+    ${(d.pending_case_logs||d.pending_proc_logs)?'<div class="alert warning">You have logbook entries awaiting verification. Please review them under Clinical (Medical) &gt; Verify Case / Procedure Logs.</div>':''}
+    <div class="card" style="margin-top:14px">
+      <h3 style="margin:0 0 10px;font-size:14px">Recent Notices</h3>
+      ${d.recent_notices.length?d.recent_notices.map(n=>`<div style="padding:8px 0;border-bottom:1px solid var(--border)"><strong>${n.title}</strong><br><span style="font-size:12px;color:var(--muted)">${fmtDate(n.created_at)} · ${n.audience}</span></div>`).join(''):'<div class="empty-msg" style="padding:12px">No notices</div>'}
+    </div>`;
+};
+
+sections.attendance = async c => {
+  const today = new Date().toISOString().split('T')[0];
+  const [courses, batches] = await Promise.all([API('/api/faculty/courses'), API('/api/faculty/batches')]);
+  c.innerHTML=`
+    <div class="section-header"><h2>Mark Attendance</h2></div>
+    <div class="filter-bar">
+      <select id="attCourse"><option value="">Select Course</option>${courses.items.map(c2=>`<option value="${c2.code}">${c2.code} - ${c2.name}</option>`).join('')}</select>
+      <input type="date" id="attDate" value="${today}"/>
+      <button class="btn small" id="loadAttBtn">Load Students</button>
+    </div>
+    <div id="attArea"></div>`;
+  $('loadAttBtn').addEventListener('click', async ()=>{
+    const cc=$('attCourse').value, dt=$('attDate').value;
+    if(!cc||!dt){alert('Select course and date');return;}
+    const d=await API(`/api/faculty/attendance?course_code=${cc}&date=${dt}`);
+    const attMap={};
+    d.students.forEach(s=>attMap[s.id]=s.status||'present');
+    $('attArea').innerHTML=`
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <strong>${cc} · ${dt} · ${d.students.length} students</strong>
+          <div style="display:flex;gap:6px">
+            <button class="btn small secondary" onclick="markAll('present')">All Present</button>
+            <button class="btn small secondary" onclick="markAll('absent')">All Absent</button>
+            <button class="btn small" id="saveAttBtn">💾 Save</button>
+          </div>
+        </div>
+        <div class="att-grid" id="attGrid">
+          ${d.students.map(s=>`
+            <div class="att-row" id="att_${s.id}">
+              <div><div style="font-weight:600;font-size:13px">${s.full_name}</div><div style="font-size:11px;color:var(--muted)">${fmt(s.roll_no)}</div></div>
+              <select data-sid="${s.id}" onchange="attMap[${s.id}]=this.value" style="background:var(--bg);border:1px solid var(--border);color:var(--fg);border-radius:6px;padding:4px 8px;font-size:12px">
+                <option value="present" ${s.status==='present'?'selected':''}>Present</option>
+                <option value="absent" ${s.status==='absent'?'selected':''}>Absent</option>
+                <option value="late" ${s.status==='late'?'selected':''}>Late</option>
+                <option value="excused" ${s.status==='excused'?'selected':''}>Excused</option>
+              </select>
+            </div>`).join('')}
+        </div>
+      </div>`;
+    window.attMap = attMap;
+    window.markAll = status => { document.querySelectorAll('#attGrid select').forEach(s=>{ s.value=status; attMap[s.dataset.sid]=status; }); };
+    $('saveAttBtn').addEventListener('click', async ()=>{
+      const records=d.students.map(s=>({student_user_id:s.id,status:attMap[s.id]||'present'}));
+      await API('/api/faculty/attendance',{method:'POST',body:JSON.stringify({course_code:cc,date:dt,records})});
+      alert('Attendance saved!');
+    });
+  });
+};
+
+sections.attendanceReport = async c => {
+  const courses = await API('/api/faculty/courses');
+  c.innerHTML=`
+    <div class="section-header"><h2>Attendance Report</h2></div>
+    <div class="filter-bar">
+      <select id="repCourse"><option value="">Select Course</option>${courses.items.map(c2=>`<option value="${c2.code}">${c2.code} - ${c2.name}</option>`).join('')}</select>
+      <button class="btn small" id="loadRepBtn">Load Report</button>
+    </div>
+    <div id="repArea" class="card" style="padding:0;overflow:auto">
+      <div class="empty-msg">Select a course to view attendance report.</div>
+    </div>`;
+  $('loadRepBtn').addEventListener('click', async ()=>{
+    const cc=$('repCourse').value; if(!cc){alert('Select course');return;}
+    const d=await API(`/api/faculty/attendance/report?course_code=${cc}`);
+    $('repArea').innerHTML=d.items.length?`
+      <table><thead><tr><th>Roll No</th><th>Name</th><th>Total</th><th>Present</th><th>Absent</th><th>%</th></tr></thead>
+      <tbody>${d.items.map(r=>`<tr><td>${fmt(r.roll_no)}</td><td>${r.full_name}</td>
+        <td>${r.total}</td><td>${r.present}</td><td>${r.absent}</td>
+        <td style="color:${r.percentage<75?'var(--danger)':'var(--success)'};font-weight:500">${r.percentage}%</td>
+      </tr>`).join('')}</tbody></table>`:'<div class="empty-msg">No data for this course.</div>';
+  });
+};
+
+sections.results = async c => {
+  const exams = await API('/api/faculty/exams/all');
+  c.innerHTML=`
+    <div class="section-header"><h2>Enter Exam Marks</h2></div>
+    <div class="filter-bar">
+      <select id="examSel">
+        <option value="">Select Exam</option>
+        ${exams.items.map(e=>`<option value="${e.id}">${e.title} (${fmt(e.exam_date)})</option>`).join('')}
+      </select>
+      <button class="btn small" id="loadResults">Load</button>
+    </div>
+    <div id="resultsArea"></div>`;
+  $('loadResults').addEventListener('click', async ()=>{
+    const eid=$('examSel').value; if(!eid){alert('Select exam');return;}
+    const d=await API(`/api/faculty/results/${eid}`);
+    const existMap={};
+    d.results.forEach(r=>existMap[r.student_user_id]={marks:r.marks_obtained,grade:r.grade,pub:r.published});
+    $('resultsArea').innerHTML=`
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;margin-bottom:12px">
+          <strong>${d.exam?.title||''} · Total: ${d.exam?.total_marks} marks</strong>
+          <div style="display:flex;gap:6px">
+            <button class="btn small" id="saveMarksBtn">💾 Save All</button>
+            <button class="btn small secondary" id="publishBtn">🚀 Publish Results</button>
+          </div>
+        </div>
+        <div style="overflow:auto">
+        <table><thead><tr><th>Roll No</th><th>Name</th><th>Marks (/${d.exam?.total_marks})</th><th>Grade</th><th>Status</th></tr></thead>
+        <tbody id="marksBody">
+          ${d.students.map(s=>`<tr>
+            <td>${fmt(existMap[s.id]?'':s.roll_no)||fmt(s.roll_no)}</td><td>${s.full_name}</td>
+            <td><input type="number" class="marks-input" data-sid="${s.id}" value="${existMap[s.id]?.marks||''}" min="0" max="${d.exam?.total_marks||100}" style="width:80px;background:var(--bg);border:1px solid var(--border);color:var(--fg);border-radius:4px;padding:4px 6px;font-size:13px"/></td>
+            <td>${existMap[s.id]?.grade||'—'}</td>
+            <td>${existMap[s.id]?.pub?badge('Published','green'):(existMap[s.id]?badge('Saved','yellow'):badge('Not Entered','gray'))}</td>
+          </tr>`).join('')}
+        </tbody></table></div>
+      </div>`;
+    $('saveMarksBtn').addEventListener('click', async ()=>{
+      const inputs=document.querySelectorAll('.marks-input');
+      for(const i of inputs){
+        const m=Number(i.value); if(i.value==='')continue;
+        await API('/api/faculty/results',{method:'POST',body:JSON.stringify({student_user_id:Number(i.dataset.sid),exam_id:Number(eid),marks_obtained:m})});
+      }
+      alert('Marks saved!'); $('loadResults').click();
+    });
+    $('publishBtn').addEventListener('click', async ()=>{
+      if(!confirm('Publish all results for this exam?'))return;
+      await API(`/api/faculty/results/${eid}/publish`,{method:'PUT'});
+      alert('Results published!'); $('loadResults').click();
+    });
+  });
+};
+
+sections.lectures = async c => {
+  const d = await API('/api/faculty/lectures');
+  c.innerHTML=`
+    <div class="section-header"><h2>My Lectures</h2>
+      <button class="btn small" id="addLecBtn">+ Add Lecture</button></div>
+    <div class="card" style="padding:0;overflow:auto">
+    <table><thead><tr><th>Title</th><th>Course</th><th>Date</th><th>Time</th><th>Topic</th><th>Actions</th></tr></thead>
+    <tbody>${d.items.map(l=>`<tr><td>${l.title}</td><td>${fmt(l.course_code)}</td>
+      <td>${fmt(l.lecture_date)}</td><td>${fmt(l.start_time)}–${fmt(l.end_time)}</td>
+      <td>${fmt(l.topic)}</td>
+      <td><button class="btn small secondary" style="font-size:11px;padding:3px 8px" onclick="deleteLec(${l.id})">🗑️</button></td>
+    </tr>`).join('')||'<tr><td colspan="6" class="empty-msg">No lectures logged yet</td></tr>'}
+    </tbody></table></div>`;
+  $('addLecBtn').addEventListener('click',()=>{
+    openModal('Log Lecture',`<div class="form-grid">
+      <div class="form-group"><label>Title *</label><input name="title" required/></div>
+      <div class="form-group"><label>Course Code</label><input name="course_code" placeholder="CSE201"/></div>
+      <div class="form-group"><label>Date</label><input name="lecture_date" type="date"/></div>
+      <div class="form-group"><label>Start Time</label><input name="start_time" placeholder="09:00"/></div>
+      <div class="form-group"><label>End Time</label><input name="end_time" placeholder="10:00"/></div>
+      <div class="form-group"><label>Topic</label><input name="topic"/></div>
+      <div class="form-group cols1"><label>Description</label><textarea name="description"></textarea></div>
+      <div class="form-group cols1"><label>Notes</label><textarea name="notes"></textarea></div>
+    </div>`,
+    async()=>{ await API('/api/faculty/lectures',{method:'POST',body:JSON.stringify(formData())}); closeModal(); loadSection('lectures'); });
+  });
+};
+window.deleteLec = async id=>{ if(!confirm('Delete?'))return; await API(`/api/faculty/lectures/${id}`,{method:'DELETE'}); loadSection('lectures'); };
+
+sections.studyMaterial = async c => {
+  const d = await API('/api/faculty/study-materials');
+  c.innerHTML=`
+    <div class="section-header"><h2>Study Material</h2>
+      <button class="btn small" id="addMatBtn">+ Upload</button></div>
+    <div class="card" style="padding:0;overflow:auto">
+    <table><thead><tr><th>Title</th><th>Course</th><th>File</th><th>Uploaded</th><th>Actions</th></tr></thead>
+    <tbody>${d.items.map(m=>`<tr><td>${m.title}<br><small style="color:var(--muted)">${fmt(m.description)}</small></td>
+      <td>${fmt(m.course_code)}</td><td>${fmt(m.file_name)}</td><td>${fmtDate(m.created_at)}</td>
+      <td><button class="btn small secondary" style="font-size:11px;padding:3px 8px" onclick="deleteMat(${m.id})">🗑️</button></td>
+    </tr>`).join('')||'<tr><td colspan="5" class="empty-msg">None</td></tr>'}
+    </tbody></table></div>`;
+  $('addMatBtn').addEventListener('click',()=>{
+    openModal('Upload Material',`<div class="form-grid cols1">
+      <div class="form-group"><label>Title *</label><input name="title" required/></div>
+      <div class="form-group"><label>Description</label><input name="description"/></div>
+      <div class="form-group"><label>Course Code</label><input name="course_code" placeholder="CSE201"/></div>
+      <div class="form-group"><label>File Name</label><input name="file_name" placeholder="chapter1.pdf"/></div>
+    </div>`,
+    async()=>{ await API('/api/faculty/study-materials',{method:'POST',body:JSON.stringify(formData())}); closeModal(); loadSection('studyMaterial'); });
+  });
+};
+window.deleteMat = async id=>{ if(!confirm('Delete?'))return; await API(`/api/faculty/study-materials/${id}`,{method:'DELETE'}); loadSection('studyMaterial'); };
+
+sections.onlineExams = async c => {
+  const d = await API('/api/faculty/online-exams');
+  c.innerHTML=`
+    <div class="section-header"><h2>Online Exams</h2>
+      <button class="btn small" id="createOEBtn">+ Create</button></div>
+    <div class="card" style="padding:0;overflow:auto">
+    <table><thead><tr><th>Title</th><th>Course</th><th>Duration</th><th>Marks</th><th>Questions</th><th>Status</th><th>Actions</th></tr></thead>
+    <tbody>${d.items.map(e=>`<tr><td>${e.title}</td><td>${fmt(e.course_code)}</td>
+      <td>${e.duration_mins} min</td><td>${e.total_marks}</td><td>${e.question_count}</td>
+      <td>${statusBadge(e.status)}</td>
+      <td class="actions" style="display:flex;gap:4px">
+        <button class="btn small secondary" style="font-size:11px;padding:3px 8px" onclick="addQFaculty(${e.id},'${e.title.replace(/'/g,"\\'")}')">❓ Q</button>
+        ${e.status==='draft'?`<button class="btn small" style="font-size:11px;padding:3px 8px" onclick="publishOEF(${e.id})">🚀</button>`:''}
+      </td>
+    </tr>`).join('')||'<tr><td colspan="7" class="empty-msg">None yet</td></tr>'}
+    </tbody></table></div>`;
+  $('createOEBtn').addEventListener('click',()=>{
+    openModal('Create Online Exam',`<div class="form-grid">
+      <div class="form-group"><label>Title *</label><input name="title" required/></div>
+      <div class="form-group"><label>Course Code</label><input name="course_code"/></div>
+      <div class="form-group"><label>Duration (mins)</label><input name="duration_mins" type="number" value="60"/></div>
+      <div class="form-group"><label>Total Marks</label><input name="total_marks" type="number" value="50"/></div>
+      <div class="form-group"><label>Passing Marks</label><input name="passing_marks" type="number" value="20"/></div>
+      <div class="form-group cols1"><label>Instructions</label><textarea name="instructions"></textarea></div>
+    </div>`,
+    async()=>{ await API('/api/faculty/online-exams',{method:'POST',body:JSON.stringify(formData())}); closeModal(); loadSection('onlineExams'); });
+  });
+};
+window.publishOEF = async id=>{ await API(`/api/faculty/online-exams/${id}/publish`,{method:'PUT'}); loadSection('onlineExams'); };
+window.addQFaculty = async (id,title) => {
+  const qd = await API(`/api/faculty/online-exams/${id}/questions`);
+  openModal(`Questions: ${title}`,
+    `<div style="max-height:200px;overflow-y:auto;margin-bottom:10px">${qd.items.map((q,i)=>`<div style="background:var(--bg-2);padding:8px 12px;border-radius:6px;margin-bottom:4px;font-size:12.5px;border:1px solid var(--divider)">${i+1}. ${q.question} <span style="color:var(--success);font-weight:500">✓${q.correct_option}</span></div>`).join('')||'<div style="padding:6px;color:var(--muted);font-size:12px">No questions</div>'}</div>
+    <hr style="border-color:var(--border);margin:10px 0"/>
+    <div class="form-grid">
+      <div class="form-group cols1"><label>Question *</label><textarea name="question" required rows="2"></textarea></div>
+      <div class="form-group"><label>Option A</label><input name="option_a"/></div>
+      <div class="form-group"><label>Option B</label><input name="option_b"/></div>
+      <div class="form-group"><label>Option C</label><input name="option_c"/></div>
+      <div class="form-group"><label>Option D</label><input name="option_d"/></div>
+      <div class="form-group"><label>Correct (a/b/c/d)</label><input name="correct_option" placeholder="b"/></div>
+      <div class="form-group"><label>Marks</label><input name="marks" type="number" value="1"/></div>
+    </div>`,
+    async()=>{ await API(`/api/faculty/online-exams/${id}/questions`,{method:'POST',body:JSON.stringify(formData())}); addQFaculty(id,title); }
+  );
+};
+
+sections.lms = async c => {
+  const d = await API('/api/faculty/lms/courses');
+  c.innerHTML=`
+    <div class="section-header"><h2>My LMS Courses</h2>
+      <button class="btn small" id="addLMSBtn">+ Create Course</button></div>
+    <div class="card" style="padding:0;overflow:auto">
+    <table><thead><tr><th>Title</th><th>Category</th><th>Duration</th><th>Modules</th><th>Status</th><th>Actions</th></tr></thead>
+    <tbody>${d.items.map(c2=>`<tr><td>${c2.title}</td><td>${fmt(c2.category)}</td>
+      <td>${c2.duration_hours}h</td><td>${c2.module_count}</td><td>${statusBadge(c2.status)}</td>
+      <td class="actions" style="display:flex;gap:4px">
+        <button class="btn small secondary" style="font-size:11px;padding:3px 8px" onclick="addModFaculty(${c2.id},'${c2.title.replace(/'/g,"\\'")}')">📚 Modules</button>
+        ${c2.status!=='published'?`<button class="btn small" style="font-size:11px;padding:3px 8px" onclick="publishLMSF(${c2.id})">🚀</button>`:''}
+      </td>
+    </tr>`).join('')||'<tr><td colspan="6" class="empty-msg">None</td></tr>'}
+    </tbody></table></div>`;
+  $('addLMSBtn').addEventListener('click',()=>{
+    openModal('Create LMS Course',`<div class="form-grid cols1">
+      <div class="form-group"><label>Title *</label><input name="title" required/></div>
+      <div class="form-group"><label>Description</label><textarea name="description"></textarea></div>
+      <div class="form-group"><label>Category</label><input name="category" placeholder="Programming, DSA..."/></div>
+      <div class="form-group"><label>Duration (hours)</label><input name="duration_hours" type="number" value="10"/></div>
+    </div>`,
+    async()=>{ await API('/api/faculty/lms/courses',{method:'POST',body:JSON.stringify(formData())}); closeModal(); loadSection('lms'); });
+  });
+};
+window.publishLMSF = async id=>{ await API(`/api/faculty/lms/courses/${id}/publish`,{method:'PUT'}); loadSection('lms'); };
+window.addModFaculty = async (cid,ctitle) => {
+  const md=await API(`/api/faculty/lms/courses/${cid}/modules`);
+  openModal(`Modules: ${ctitle}`,
+    `<div style="max-height:180px;overflow-y:auto;margin-bottom:10px">${md.items.map((m,i)=>`<div style="background:var(--bg);padding:6px 10px;border-radius:6px;margin-bottom:4px;font-size:12px">${i+1}. ${m.title}</div>`).join('')||'<div style="padding:6px;color:var(--muted);font-size:12px">No modules</div>'}</div>
+    <hr style="border-color:var(--border);margin:10px 0"/>
+    <div class="form-grid cols1">
+      <div class="form-group"><label>Module Title *</label><input name="title" required/></div>
+      <div class="form-group"><label>Content</label><textarea name="content" rows="3"></textarea></div>
+      <div class="form-group"><label>Video URL</label><input name="video_url" placeholder="https://…"/></div>
+      <div class="form-group"><label>Order</label><input name="order_no" type="number" value="${md.items.length+1}"/></div>
+    </div>`,
+    async()=>{ await API(`/api/faculty/lms/courses/${cid}/modules`,{method:'POST',body:JSON.stringify(formData())}); addModFaculty(cid,ctitle); }
+  );
+};
+
+sections.dailyReport = async c => {
+  const d = await API('/api/faculty/daily-reports');
+  const today=new Date().toISOString().split('T')[0];
+  c.innerHTML=`
+    <div class="section-header"><h2>Daily Report / Worksheet</h2></div>
+    <div class="card" style="margin-bottom:14px">
+      <h3 style="margin:0 0 12px;font-size:14px">Submit Today's Report</h3>
+      <div class="form-grid cols1" id="drForm">
+        <div class="form-group"><label>Title *</label><input name="title" id="drTitle" placeholder="Daily Activity Report"/></div>
+        <div class="form-group"><label>Activities Done</label><textarea name="activities" id="drAct" rows="3" placeholder="Lectures taken, labs conducted..."></textarea></div>
+        <div class="form-group"><label>Challenges / Issues</label><textarea name="challenges" id="drChall" rows="2"></textarea></div>
+        <div class="form-group"><label>Plan for Tomorrow</label><textarea name="plan_tomorrow" id="drPlan" rows="2"></textarea></div>
+      </div>
+      <button class="btn small" id="submitDR" style="margin-top:10px">💾 Submit Report</button>
+    </div>
+    <div class="card" style="padding:0;overflow:auto">
+    <table><thead><tr><th>Date</th><th>Title</th><th>Activities</th></tr></thead>
+    <tbody>${d.items.map(r=>`<tr><td>${r.report_date}</td><td>${r.title}</td>
+      <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis">${fmt(r.activities)}</td>
+    </tr>`).join('')||'<tr><td colspan="3" class="empty-msg">No reports yet</td></tr>'}
+    </tbody></table></div>`;
+  $('submitDR').addEventListener('click', async ()=>{
+    const data={report_date:today,title:$('drTitle').value,activities:$('drAct').value,challenges:$('drChall').value,plan_tomorrow:$('drPlan').value};
+    if(!data.title){alert('Title required');return;}
+    await API('/api/faculty/daily-reports',{method:'POST',body:JSON.stringify(data)});
+    alert('Report submitted!'); loadSection('dailyReport');
+  });
+};
+
+sections.reminders = async c => {
+  const d = await API('/api/faculty/reminders');
+  c.innerHTML=`
+    <div class="section-header"><h2>Reminders</h2>
+      <button class="btn small" id="addRemBtn">+ Add Reminder</button></div>
+    <div class="card" style="padding:0;overflow:auto">
+    <table><thead><tr><th>Title</th><th>Description</th><th>Remind At</th><th>Repeat</th><th>Actions</th></tr></thead>
+    <tbody>${d.items.map(r=>`<tr><td>${r.title}</td><td>${fmt(r.description)}</td>
+      <td>${r.remind_at}</td><td>${r.repeat}</td>
+      <td><button class="btn small secondary" style="font-size:11px;padding:3px 8px" onclick="doneReminder(${r.id})">✅ Done</button></td>
+    </tr>`).join('')||'<tr><td colspan="5" class="empty-msg">No reminders</td></tr>'}
+    </tbody></table></div>`;
+  $('addRemBtn').addEventListener('click',()=>{
+    openModal('Add Reminder',`<div class="form-grid cols1">
+      <div class="form-group"><label>Title *</label><input name="title" required/></div>
+      <div class="form-group"><label>Description</label><textarea name="description"></textarea></div>
+      <div class="form-group"><label>Remind At *</label><input name="remind_at" type="datetime-local" required/></div>
+      <div class="form-group"><label>Repeat</label><select name="repeat"><option value="none">None</option><option value="daily">Daily</option><option value="weekly">Weekly</option></select></div>
+    </div>`,
+    async()=>{ await API('/api/faculty/reminders',{method:'POST',body:JSON.stringify(formData())}); closeModal(); loadSection('reminders'); });
+  });
+};
+window.doneReminder = async id=>{ await API(`/api/faculty/reminders/${id}/done`,{method:'PUT'}); loadSection('reminders'); };
+
+sections.notifications = async c => {
+  const d = await API('/api/faculty/notifications');
+  c.innerHTML=`
+    <div class="section-header"><h2>Notifications</h2></div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      ${d.items.map(n=>`<div class="card" style="${n.is_read?'opacity:.6':''}">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+          <strong>${n.title}</strong><span style="font-size:11px;color:var(--muted)">${fmtDate(n.sent_at)}</span>
+        </div>
+        <div style="font-size:13px;color:var(--muted)">${n.message}</div>
+      </div>`).join('')||'<div class="empty-msg">No notifications</div>'}
+    </div>`;
+};
+
+sections.profile = async c => {
+  const d = await API('/api/faculty/profile');
+  c.innerHTML=`
+    <div class="section-header"><h2>My Profile</h2></div>
+    <div class="card">
+      <div class="grid cols-2">
+        ${[['Full Name',d.user?.full_name],['Username',d.user?.username],['Email',d.user?.email||'—'],
+           ['Role',d.user?.role],['Emp Code',d.employee?.emp_code||'—'],['Department',d.employee?.department||'—'],
+           ['Designation',d.employee?.designation||'—'],['Join Date',d.employee?.join_date||'—'],
+           ['Salary','₹'+(d.employee?.salary||0).toLocaleString()],['Phone',d.employee?.phone||'—']
+        ].map(([l,v])=>`<div class="card" style="padding:12px"><div class="sub">${l}</div><div style="font-weight:600">${v}</div></div>`).join('')}
+      </div>
+    </div>`;
+};
+
+// ═════════════════════════════════════════════════════════════════
+// MEDICAL COLLEGE — Clinical Postings & Logbook Verification
+// ═════════════════════════════════════════════════════════════════
+sections.clinicalPostings = async c => {
+  const d = await API('/api/faculty/clinical-postings');
+  c.innerHTML = `
+    <div class="section-header"><h2>Clinical Postings — Assigned to Me</h2></div>
+    <div class="card" style="padding:0;overflow:auto">
+    <table><thead><tr><th>Department</th><th>Ward</th><th>Batch / Student</th><th>Period</th><th>Shift</th><th>Status</th></tr></thead>
+    <tbody>${d.items.map(p=>`<tr>
+      <td><strong>${fmt(p.dept_full||p.department)}</strong></td>
+      <td>${fmt(p.ward)}</td>
+      <td>${p.student_name?p.student_name+' <small style="color:var(--muted)">('+fmt(p.roll_no)+')</small>':(p.batch_name||'—')}</td>
+      <td>${fmtDate(p.start_date)} → ${fmtDate(p.end_date)}</td>
+      <td>${fmt(p.shift)}</td>
+      <td>${badge(p.status, p.status==='ongoing'?'green':p.status==='completed'?'blue':'gray')}</td>
+    </tr>`).join('')||'<tr><td colspan="6" class="empty-msg">No postings assigned</td></tr>'}
+    </tbody></table></div>`;
+};
+
+sections.verifyCaseLogs = async c => {
+  let filter = 'pending';
+  const render = async () => {
+    const d = await API('/api/faculty/case-logs?status=' + filter);
+    c.innerHTML = `
+      <div class="section-header"><h2>Case Logbook — Verification Queue</h2></div>
+      <div class="filter-bar">
+        <select id="fStatus">
+          <option value="pending">Pending Verification</option>
+          <option value="verified">Verified</option>
+          <option value="rejected">Rejected</option>
+        </select>
+      </div>
+      ${d.items.length ? d.items.map(cl => `
+        <div class="card" style="margin-bottom:12px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px">
+            <div style="flex:1;min-width:280px">
+              <div style="font-weight:500">${cl.student_name} <small style="color:var(--muted)">(${fmt(cl.roll_no)})</small></div>
+              <div style="font-size:12px;color:var(--muted)">${fmtDate(cl.case_date)} · ${fmt(cl.department)}${cl.ward?' / '+cl.ward:''}</div>
+            </div>
+            <div>${badge(cl.status, cl.status==='verified'?'green':cl.status==='rejected'?'red':'yellow')}</div>
+          </div>
+          <div style="margin-top:10px;font-size:13px">
+            <div><strong>Patient:</strong> ${fmt(cl.patient_code)} (${fmt(cl.age)}${cl.gender?'/'+cl.gender.charAt(0):''})</div>
+            <div><strong>Chief Complaint:</strong> ${fmt(cl.chief_complaint)}</div>
+            <div><strong>Diagnosis:</strong> ${fmt(cl.diagnosis)}</div>
+            <div><strong>Management:</strong> ${fmt(cl.management)}</div>
+            <div><strong>Learning Points:</strong> ${fmt(cl.learning_points)}</div>
+            ${cl.remarks?`<div style="margin-top:6px;padding:6px 10px;background:var(--bg-2);border-radius:var(--r);font-size:12px"><strong>Remarks:</strong> ${cl.remarks}</div>`:''}
+          </div>
+          ${cl.status==='pending'?`
+            <div style="margin-top:12px;display:flex;gap:8px">
+              <button class="btn small" onclick="verifyCase(${cl.id},'verified')">✓ Verify</button>
+              <button class="btn small secondary" onclick="verifyCase(${cl.id},'rejected')">✗ Reject with remarks</button>
+            </div>`:''}
+        </div>`).join('') : '<div class="empty-msg">No entries</div>'}`;
+    $('fStatus').value = filter;
+    $('fStatus').addEventListener('change', e => { filter = e.target.value; render(); });
+  };
+  await render();
+};
+window.verifyCase = async (id, action) => {
+  let remarks = '';
+  if (action === 'rejected') {
+    remarks = prompt('Enter reason for rejection:') || '';
+    if (!remarks) return;
+  }
+  await API(`/api/faculty/case-logs/${id}/verify`, { method:'PUT', body: JSON.stringify({ action, remarks }) });
+  loadSection('verifyCaseLogs');
+};
+
+sections.verifyProcLogs = async c => {
+  let filter = 'pending';
+  const render = async () => {
+    const d = await API('/api/faculty/procedure-logs?status=' + filter);
+    c.innerHTML = `
+      <div class="section-header"><h2>Procedure Logbook — Verification Queue</h2></div>
+      <div class="filter-bar">
+        <select id="fStatus">
+          <option value="pending">Pending Verification</option>
+          <option value="verified">Verified</option>
+          <option value="rejected">Rejected</option>
+        </select>
+      </div>
+      <div class="card" style="padding:0;overflow:auto">
+      <table><thead><tr><th>Date</th><th>Student</th><th>Procedure</th><th>Dept</th><th>Patient</th><th>Level</th><th>Remarks</th><th>Actions</th></tr></thead>
+      <tbody>${d.items.map(p=>`<tr>
+        <td>${fmtDate(p.procedure_date)}</td>
+        <td>${p.student_name}<br><small style="color:var(--muted)">${fmt(p.roll_no)}</small></td>
+        <td><strong>${p.procedure_name}</strong></td>
+        <td>${fmt(p.department)}</td>
+        <td>${fmt(p.patient_code)}</td>
+        <td>${badge(p.level, p.level==='performed'?'green':p.level==='assisted'?'blue':'gray')}</td>
+        <td style="font-size:12px;color:var(--muted);max-width:200px">${fmt(p.remarks)}</td>
+        <td class="actions">${p.status==='pending'?`
+          <button class="btn small" onclick="verifyProc(${p.id},'verified')">✓</button>
+          <button class="btn small secondary" onclick="verifyProc(${p.id},'rejected')">✗</button>`:badge(p.status, p.status==='verified'?'green':'red')}</td>
+      </tr>`).join('')||'<tr><td colspan="8" class="empty-msg">No entries</td></tr>'}
+      </tbody></table></div>`;
+    $('fStatus').value = filter;
+    $('fStatus').addEventListener('change', e => { filter = e.target.value; render(); });
+  };
+  await render();
+};
+window.verifyProc = async (id, action) => {
+  let remarks = '';
+  if (action === 'rejected') {
+    remarks = prompt('Enter reason for rejection:') || '';
+    if (!remarks) return;
+  }
+  await API(`/api/faculty/procedure-logs/${id}/verify`, { method:'PUT', body: JSON.stringify({ action, remarks }) });
+  loadSection('verifyProcLogs');
+};
+
+function loadSection(sec){
+  const c=$('appContent'); c.innerHTML='<div class="empty-msg">Loading…</div>';
+  const fn=sections[sec]; if(fn)fn(c); else c.innerHTML=`<div class="empty-msg">${sec} coming soon.</div>`;
+}
+fetch('/api/me').then(r=>r.json()).then(d=>{
+  if(!d.user)return location.href='/login.html';
+  $('whoName').textContent=d.user.full_name;
+  $('avatar').textContent=d.user.full_name.charAt(0).toUpperCase();
+});
+$('logoutBtn').addEventListener('click', async()=>{ await fetch('/api/logout',{method:'POST'}); location.href='/login.html'; });
+loadSection('dashboard');
+</script>
+</body>
+</html>
