@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>JJMMC Medical College · Admin</title>
+<title>JJMMC Medical College · Admin (PG)</title>
 <link rel="stylesheet" href="/css/style.css"/>
 <style>
 /* Admin portal page-specific overrides (global UI in style.css) */
@@ -16,8 +16,8 @@
   <div class="brand">
     <div class="brand-logo">JJ</div>
     <div>
-      <h1 style="font-size:14px">Admin Portal <span class="prog-badge prog-badge-ug">UG</span></h1>
-      <small>JJMMC · Undergraduate Programme</small>
+      <h1 style="font-size:14px">Admin Portal <span class="prog-badge prog-badge-pg">PG</span></h1>
+      <small>JJMMC · Postgraduate Programme</small>
     </div>
   </div>
   <nav class="nav" id="sideNav">
@@ -27,7 +27,7 @@
     </div>
     <div class="nav-group">
       <div class="nav-label">Academics</div>
-      <a href="#" data-sec="students">MBBS / PG Students</a>
+      <a href="#" data-sec="students">PG Students (MD / MS / DNB)</a>
       <a href="#" data-sec="batches">Batches &amp; Subjects</a>
       <a href="#" data-sec="attendance">Attendance</a>
       <a href="#" data-sec="exams">Professional Exams &amp; IA</a>
@@ -324,11 +324,10 @@ function normaliseImportRow(raw) {
     const key = String(k).trim().toLowerCase().replace(/\s+/g,'_');
     out[key] = raw[k];
   }
-  // common header aliases
-  if (!out.full_name && out.name)       out.full_name = out.name;
+  if (!out.full_name && out.name)         out.full_name = out.name;
   if (!out.full_name && out.student_name) out.full_name = out.student_name;
-  if (!out.program_level && out.program) out.program_level = out.program;
-  if (!out.mbbs_year && out.year)       out.mbbs_year = out.year;
+  if (!out.program_level && out.program)  out.program_level = out.program;
+  if (!out.mbbs_year && out.year)         out.mbbs_year = out.year;
   return out;
 }
 
@@ -376,7 +375,6 @@ function openImportStudentsModal() {
     }
   });
 
-  // Override the save button label
   setTimeout(() => {
     const btn = document.getElementById('modalSubmit');
     if (btn) btn.textContent = 'Import';
@@ -400,7 +398,7 @@ function openImportStudentsModal() {
         preview.innerHTML = '<div style="color:var(--danger)">No rows found in the file.</div>';
         return;
       }
-      const head = STUDENT_IMPORT_FIELDS.slice(0,8); // show only first 8 cols
+      const head = STUDENT_IMPORT_FIELDS.slice(0,8);
       preview.innerHTML = `
         <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:8px">
           <span>📄 <strong>${file.name}</strong></span>
@@ -1594,7 +1592,6 @@ sections.lectures = async (c) => {
   };
   const fmtTime = (s) => {
     if (!s) return '';
-    // Accept "HH:MM" or "HH:MM:SS"
     const [h, m] = String(s).split(':');
     if (!h || !m) return s;
     const hr = Number(h), suf = hr >= 12 ? 'PM' : 'AM', h12 = ((hr + 11) % 12) + 1;
@@ -1607,7 +1604,7 @@ sections.lectures = async (c) => {
 
   c.innerHTML = `
     <div class="section-header">
-      <h2>Lecture Management</h2>
+      <h2>Lecture Management <span class="prog-badge prog-badge-pg">PG</span></h2>
       <button class="btn small" id="addLectureBtn">+ Add Lecture</button>
     </div>
     <div class="card" style="padding:0;overflow:auto">
@@ -1642,7 +1639,7 @@ sections.lectures = async (c) => {
                 <button class="icon-btn" title="Delete" onclick="deleteLecture(${l.id})">🗑️</button>
               </td>
             </tr>
-          `).join('') || '<tr><td colspan="7" class="empty-msg">No lectures scheduled yet. Click "+ Add Lecture" to create one.</td></tr>'}
+          `).join('') || '<tr><td colspan="7" class="empty-msg">No PG lectures scheduled yet. Click "+ Add Lecture" to create one.</td></tr>'}
         </tbody>
       </table>
     </div>`;
@@ -1655,7 +1652,7 @@ sections.lectures = async (c) => {
     const facOpts = (facultyList.users || []).map(u =>
       `<option value="${u.id}">${u.full_name}</option>`).join('');
 
-    openModal('Add Lecture', `
+    openModal('Add PG Lecture', `
       <div class="form-grid cols2">
         <div class="form-group"><label>Date *</label>
           <input name="lecture_date" type="date" required value="${new Date().toISOString().slice(0,10)}"/></div>
@@ -1670,11 +1667,11 @@ sections.lectures = async (c) => {
         <div class="form-group"><label>Faculty</label>
           <select name="faculty_id"><option value="">— Select faculty —</option>${facOpts}</select></div>
         <div class="form-group span-2"><label>Title *</label>
-          <input name="title" required placeholder="e.g. Cardiovascular Physiology — Lecture 4"/></div>
+          <input name="title" required placeholder="e.g. MD Medicine Seminar — Nephrotic Syndrome"/></div>
         <div class="form-group span-2"><label>Topic</label>
-          <input name="topic" placeholder="e.g. Cardiac cycle & heart sounds"/></div>
+          <input name="topic" placeholder="e.g. Pathophysiology & management"/></div>
         <div class="form-group span-2"><label>Description / Notes</label>
-          <textarea name="description" rows="2" placeholder="Brief summary for students"></textarea></div>
+          <textarea name="description" rows="2" placeholder="Brief summary for PG residents"></textarea></div>
       </div>
     `, async () => {
       const body = formData();

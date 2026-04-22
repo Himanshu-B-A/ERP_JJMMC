@@ -18,6 +18,19 @@
       </div>
 
       <div class="field">
+        <label>Programme</label>
+        <div class="program-toggle" role="tablist" aria-label="Programme">
+          <button type="button" class="program-opt is-active" data-program="UG" role="tab" aria-selected="true">
+            <strong>UG</strong><span>Undergraduate · MBBS / BDS</span>
+          </button>
+          <button type="button" class="program-opt" data-program="PG" role="tab" aria-selected="false">
+            <strong>PG</strong><span>Postgraduate · MD / MS / DNB</span>
+          </button>
+        </div>
+        <input type="hidden" id="program" name="program" value="UG" />
+      </div>
+
+      <div class="field">
         <label for="username">Username</label>
         <input id="username" name="username" placeholder="Enter your username" required />
       </div>
@@ -31,23 +44,39 @@
 
       <div class="hint">
         Demo accounts (password = username + <code>123</code>):<br/>
-        <code>admin</code> · <code>principal</code> · <code>faculty</code> · <code>student</code> · <code>parent</code>
+        <strong>UG</strong> · <code>admin</code> · <code>principal</code> · <code>faculty</code> · <code>student</code> · <code>parent</code><br/>
+        <strong>PG</strong> · <code>adminpg</code> · <code>principalpg</code> · <code>facultypg</code> · <code>studentpg</code> · <code>parentpg</code>
       </div>
     </form>
   </div>
 
   <script>
+    // UG / PG segmented toggle
+    const programInput = document.getElementById('program');
+    document.querySelectorAll('.program-opt').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.program-opt').forEach((b) => {
+          b.classList.remove('is-active');
+          b.setAttribute('aria-selected', 'false');
+        });
+        btn.classList.add('is-active');
+        btn.setAttribute('aria-selected', 'true');
+        programInput.value = btn.dataset.program;
+      });
+    });
+
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const msg = document.getElementById('msg');
       msg.textContent = ''; msg.className = 'msg';
       const username = document.getElementById('username').value.trim();
       const password = document.getElementById('password').value;
+      const program  = programInput.value;
       try {
         const res = await fetch('/api/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, password })
+          body: JSON.stringify({ username, password, program })
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Login failed');

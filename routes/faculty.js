@@ -91,11 +91,51 @@ router.delete('/lectures/:id', only, (req, res) => {
 
 // ── EXAM RESULTS (Enter Marks) ────────────────────────────────────
 router.get('/exams', only, (req, res) => {
-  const rows = db.prepare('SELECT * FROM exam_schedules WHERE created_by=? ORDER BY exam_date').all(req.session.user.id);
-  res.json({ items: rows });
+  const { exam_type, professional, course_code, mine } = req.query;
+  let sql = 'SELECT * FROM exam_schedules WHERE 1=1';
+  const a = [];
+  if (mine !== '0') { sql += ' AND (created_by=? OR created_by IS NULL)'; a.push(req.session.user.id); }
+  if (exam_type)    { sql += ' AND exam_type=?';    a.push(exam_type); }
+  if (professional) { sql += ' AND professional=?'; a.push(professional); }
+  if (course_code)  { sql += ' AND course_code=?';  a.push(course_code); }
+  sql += ' ORDER BY exam_date DESC, id DESC';
+  res.json({ items: db.prepare(sql).all(...a) });
 });
 router.get('/exams/all', only, (req, res) => {
-  res.json({ items: db.prepare('SELECT * FROM exam_schedules ORDER BY exam_date').all() });
+  const { exam_type, professional } = req.query;
+  let sql = 'SELECT * FROM exam_schedules WHERE 1=1';
+  const a = [];
+  if (exam_type)    { sql += ' AND exam_type=?';    a.push(exam_type); }
+  if (professional) { sql += ' AND professional=?'; a.push(professional); }
+  sql += ' ORDER BY exam_date DESC';
+  res.json({ items: db.prepare(sql).all(...a) });
+});
+
+// Bulk save IA / exam marks — faculty enters marks for a class in one go
+router.post('/results/bulk', only, (req, res) => {
+  const { exam_id, rows } = req.body || {};
+  if (!exam_id || !Array.isArray(rows)) return res.status(400).json({ error: 'exam_id and rows required' });
+  const exam = db.prepare('SELECT * FROM exam_schedules WHERE id=?').get(Number(exam_id));
+  if (!exam) return res.status(404).json({ error: 'exam not found' });
+  const total = exam.total_marks || 100;
+  const gradeOf = m => { const p=(m/total)*100;
+    return p>=90?'A+':p>=80?'A':p>=70?'B+':p>=60?'B':p>=50?'C':p>=40?'D':'F'; };
+  const upsert = db.prepare(`INSERT INTO results (student_user_id,exam_id,marks_obtained,grade,remarks,published)
+    VALUES (?,?,?,?,?,0)
+    ON CONFLICT(student_user_id,exam_id) DO UPDATE SET
+      marks_obtained=excluded.marks_obtained, grade=excluded.grade, remarks=excluded.remarks`);
+  let saved = 0;
+  db.transaction(() => {
+    for (const r of rows) {
+      const sid = Number(r.student_user_id);
+      const m = Number(r.marks_obtained ?? r.marks);
+      if (!sid || Number.isNaN(m)) continue;
+      const g = (r.grade && String(r.grade).trim()) || gradeOf(m);
+      upsert.run(sid, exam.id, m, g, r.remarks || null);
+      saved++;
+    }
+  })();
+  res.json({ ok: true, saved });
 });
 router.get('/results/:exam_id', only, (req, res) => {
   const rows = db.prepare(`SELECT r.*,u.full_name,p.roll_no FROM results r
@@ -329,6 +369,35 @@ router.put('/procedure-logs/:id/verify', only, (req, res) => {
     `UPDATE procedure_logs SET status=?, verified_by=?, verified_at=CURRENT_TIMESTAMP, remarks=COALESCE(?,remarks) WHERE id=?`
   ).run(status, req.session.user.id, remarks || null, Number(req.params.id));
   logActivity(req.session.user.id, status === 'verified' ? 'VERIFY' : 'REJECT', 'procedure_log', Number(req.params.id), remarks || null);
+  res.json({ ok: true });
+});
+
+// ── Allocations assigned to this faculty ─────────────────────────
+router.get('/allocations', only, (req, res) => {
+  const uid = req.session.user.id;
+  const { status, category } = req.query;
+  let sql = `SELECT a.*, b.code AS batch_code, b.name AS batch_name,
+      creator.full_name AS created_by_name
+      FROM allocations a
+      LEFT JOIN batches b ON b.id = CASE WHEN a.assignee_type='batch' THEN a.assignee_id ELSE a.batch_id END
+      LEFT JOIN users creator ON creator.id=a.created_by
+      WHERE a.assignee_type='faculty' AND a.assignee_id=?`;
+  const p = [uid];
+  if (status)   { sql += ' AND a.status=?';   p.push(status); }
+  if (category) { sql += ' AND a.category=?'; p.push(category); }
+  sql += ' ORDER BY a.priority DESC, COALESCE(a.due_date, a.created_at) DESC LIMIT 200';
+  res.json({ items: db.prepare(sql).all(...p) });
+});
+
+router.put('/allocations/:id/status', only, (req, res) => {
+  const { status } = req.body || {};
+  const allowed = ['pending','in-progress','completed','cancelled'];
+  if (!allowed.includes(status)) return res.status(400).json({ error: 'invalid status' });
+  const uid = req.session.user.id;
+  const row = db.prepare(`SELECT id FROM allocations WHERE id=? AND assignee_type='faculty' AND assignee_id=?`)
+    .get(Number(req.params.id), uid);
+  if (!row) return res.status(404).json({ error: 'allocation not found or not yours' });
+  db.prepare('UPDATE allocations SET status=? WHERE id=?').run(status, Number(req.params.id));
   res.json({ ok: true });
 });
 

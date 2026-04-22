@@ -5,19 +5,65 @@ const { requireRole } = require('./helpers');
 const router = express.Router();
 const only = requireRole('principal', 'admin');
 
-// ── DASHBOARD ─────────────────────────────────────────────────────
+// ── OVERVIEW (Principal home) ─────────────────────────────────────
 router.get('/stats', only, (req, res) => {
   const roleCounts = db.prepare('SELECT role,COUNT(*) AS c FROM users GROUP BY role').all();
   const by = Object.fromEntries(roleCounts.map(r=>[r.role,r.c]));
+
+  // UG / PG split (defensive — column may not exist yet on older DBs)
+  let ugCount = 0, pgCount = 0;
+  try {
+    const ugPg = db.prepare(`SELECT COALESCE(program_level,'UG') AS lvl, COUNT(*) AS c
+      FROM student_profiles GROUP BY lvl`).all();
+    ugPg.forEach(r => { if (r.lvl === 'PG') pgCount = r.c; else ugCount += r.c; });
+  } catch { ugCount = by.student || 0; }
+
+  const byYear = db.prepare(`SELECT COALESCE(mbbs_year,0) AS year,COUNT(*) AS c
+      FROM student_profiles GROUP BY year ORDER BY year`).all();
+  const attnByYear = db.prepare(`SELECT COALESCE(sp.mbbs_year,0) AS year,
+      COUNT(*) AS total,
+      SUM(CASE WHEN a.status='present' THEN 1 ELSE 0 END) AS present
+      FROM attendance a
+      JOIN users u ON u.id=a.student_user_id
+      LEFT JOIN student_profiles sp ON sp.user_id=u.id
+      GROUP BY year ORDER BY year`).all();
+  const passRate = db.prepare(`SELECT
+      SUM(CASE WHEN grade IN ('F','FAIL') THEN 0 ELSE 1 END) AS pass,
+      COUNT(*) AS total FROM results WHERE published=1`).get();
+  const feeMonthly = db.prepare(`SELECT strftime('%Y-%m',paid_on) AS month,
+      COALESCE(SUM(amount),0) AS total
+      FROM fee_payments WHERE status='PAID'
+      GROUP BY month ORDER BY month DESC LIMIT 6`).all();
+  const lowAttn = db.prepare(`SELECT u.full_name,sp.roll_no,sp.mbbs_year,
+      COUNT(*) AS total,
+      SUM(CASE WHEN a.status='present' THEN 1 ELSE 0 END) AS present,
+      ROUND(100.0*SUM(CASE WHEN a.status='present' THEN 1 ELSE 0 END)/COUNT(*),1) AS pct
+      FROM attendance a
+      JOIN users u ON u.id=a.student_user_id
+      LEFT JOIN student_profiles sp ON sp.user_id=u.id
+      GROUP BY a.student_user_id HAVING pct < 75 ORDER BY pct LIMIT 6`).all();
+
   res.json({
     totals: {
-      students:     by.student  || 0,
-      faculty:      by.faculty  || 0,
-      departments:  db.prepare('SELECT COUNT(*) AS c FROM departments').get().c,
-      courses:      db.prepare('SELECT COUNT(*) AS c FROM courses').get().c,
+      students:      by.student  || 0,
+      students_ug:   ugCount,
+      students_pg:   pgCount,
+      faculty:       by.faculty  || 0,
+      parents:       by.parent   || 0,
+      departments:   db.prepare('SELECT COUNT(*) AS c FROM departments').get().c,
+      courses:       db.prepare('SELECT COUNT(*) AS c FROM courses').get().c,
+      batches:       db.prepare('SELECT COUNT(*) AS c FROM batches').get().c,
       fees_collected: db.prepare("SELECT COALESCE(SUM(amount),0) AS s FROM fee_payments WHERE status='PAID'").get().s,
-      open_drives:  db.prepare("SELECT COUNT(*) AS c FROM placement_drives WHERE status='open'").get().c,
+      pass_pct:      passRate && passRate.total ? Math.round((passRate.pass/passRate.total)*100) : 0,
     },
+    by_year: byYear,
+    attendance_by_year: attnByYear.map(r => ({
+      year: r.year,
+      total: r.total,
+      pct: r.total ? Math.round(100*r.present/r.total) : 0,
+    })),
+    fee_monthly: feeMonthly,
+    low_attendance: lowAttn,
     recent_results: db.prepare(`SELECT r.*,u.full_name,p.roll_no,e.title AS exam_title
       FROM results r JOIN users u ON u.id=r.student_user_id
       LEFT JOIN student_profiles p ON p.user_id=u.id
@@ -27,6 +73,23 @@ router.get('/stats', only, (req, res) => {
       FROM users u JOIN student_profiles p ON p.user_id=u.id WHERE u.role='student' GROUP BY p.department`).all(),
     notices: db.prepare("SELECT * FROM notices WHERE audience IN ('all','principal') ORDER BY created_at DESC LIMIT 5").all(),
   });
+});
+
+// ── SUBJECTS ──────────────────────────────────────────────────────
+router.get('/subjects', only, (req, res) => {
+  const { year, department, q } = req.query;
+  let sql = `SELECT c.*, d.name AS dept_name, d.category AS dept_category
+             FROM courses c LEFT JOIN departments d ON d.name=c.department
+             WHERE 1=1`;
+  const a = [];
+  if (year)       { sql += ` AND c.mbbs_year=?`; a.push(Number(year)); }
+  if (department) { sql += ` AND c.department=?`; a.push(department); }
+  if (q)          { sql += ` AND (c.name LIKE ? OR c.code LIKE ?)`; a.push(`%${q}%`,`%${q}%`); }
+  sql += ` ORDER BY c.mbbs_year, c.department, c.code`;
+  const items = db.prepare(sql).all(...a);
+  const byYear = db.prepare(`SELECT COALESCE(mbbs_year,0) AS year,COUNT(*) AS c FROM courses GROUP BY year ORDER BY year`).all();
+  const departments = db.prepare(`SELECT DISTINCT department FROM courses WHERE department IS NOT NULL ORDER BY department`).all();
+  res.json({ items, by_year: byYear, departments: departments.map(d=>d.department) });
 });
 
 // ── STUDENTS ──────────────────────────────────────────────────────
@@ -92,13 +155,6 @@ router.get('/fees', only, (req, res) => {
   const byType = db.prepare(`SELECT fee_type,COALESCE(SUM(amount),0) AS total FROM fee_payments GROUP BY fee_type`).all();
   const recent = db.prepare(`SELECT f.*,u.full_name,p.roll_no FROM fee_payments f JOIN users u ON u.id=f.user_id LEFT JOIN student_profiles p ON p.user_id=u.id ORDER BY f.paid_on DESC LIMIT 20`).all();
   res.json({ total_paid: total, by_type: byType, recent });
-});
-
-// ── PLACEMENT OVERVIEW ────────────────────────────────────────────
-router.get('/placement', only, (req, res) => {
-  const drives = db.prepare(`SELECT d.*,(SELECT COUNT(*) FROM placement_applications WHERE drive_id=d.id) AS applications FROM placement_drives d ORDER BY d.drive_date DESC`).all();
-  const placed = db.prepare("SELECT COUNT(DISTINCT student_user_id) AS c FROM placement_applications WHERE status='selected'").get().c;
-  res.json({ drives, total_placed: placed });
 });
 
 // ── MIS REPORTS ───────────────────────────────────────────────────

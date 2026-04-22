@@ -1,13 +1,20 @@
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const Database = require('better-sqlite3');
 const bcrypt = require('bcryptjs');
 
-const DATA_DIR = path.join(__dirname, 'data');
+// On Vercel (or any read-only FS), write the DB to a writable tmp dir.
+// Note: /tmp on Vercel is EPHEMERAL — data resets between cold starts.
+const IS_SERVERLESS = !!process.env.VERCEL || !!process.env.AWS_LAMBDA_FUNCTION_NAME;
+const DATA_DIR = IS_SERVERLESS
+  ? path.join(os.tmpdir(), 'jjmmc-erp-data')
+  : path.join(__dirname, 'data');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const db = new Database(path.join(DATA_DIR, 'erp.db'));
-db.pragma('journal_mode = WAL');
+// WAL doesn't play well with ephemeral /tmp; use DELETE mode on serverless.
+db.pragma(IS_SERVERLESS ? 'journal_mode = DELETE' : 'journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -844,13 +851,13 @@ function seed() {
       (user_id,roll_no,university_reg_no,course,mbbs_year,semester,admission_quota,neet_rank,dob,gender,phone,address,blood_group,aadhaar,parent_name,parent_phone)
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   ).run(student.id, 'MBBS2023021', 'JJMMC/MBBS/2023/021', 'MBBS', 2, 3, 'Govt', 15420, '2005-06-12', 'Male',
-        '+91 98765 43210', 'Pune, Maharashtra', 'O+', 'XXXX-XXXX-1234', 'Dinesh Kulkarni', '+91 98765 00001');
+        '+91 98765 43210', 'Vidyanagar, Davangere, Karnataka', 'O+', 'XXXX-XXXX-1234', 'Dinesh Patil', '+91 98765 00001');
   db.prepare(
     `INSERT INTO student_profiles
       (user_id,roll_no,university_reg_no,course,mbbs_year,semester,admission_quota,neet_rank,dob,gender,phone,address,blood_group,aadhaar,parent_name,parent_phone)
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   ).run(student2.id, 'MBBS2022017', 'JJMMC/MBBS/2022/017', 'MBBS', 3, 5, 'Management', 28710, '2004-09-20', 'Female',
-        '+91 98765 43211', 'Mumbai, Maharashtra', 'A+', 'XXXX-XXXX-5678', 'Ramesh Mehta', '+91 98765 00002');
+        '+91 98765 43211', 'P.B. Road, Davangere, Karnataka', 'A+', 'XXXX-XXXX-5678', 'Ramesh Hegde', '+91 98765 00002');
 
   // Parent ↔ student link
   db.prepare(
@@ -871,45 +878,158 @@ function seed() {
     `INSERT INTO employees (user_id, emp_code, department, designation, specialization, qualification, council_reg_no, join_date, salary, phone)
      VALUES (?,?,?,?,?,?,?,?,?,?)`
   );
-  insEmp.run(faculty.id,  'JJMMC-FAC-0001', 'General Medicine', 'Professor & HOD',    'Internal Medicine', 'MD (General Medicine)', 'MMC/12345', '2012-07-01', 185000, '+91 87654 32109');
-  insEmp.run(faculty2.id, 'JJMMC-FAC-0002', 'Anatomy',          'Associate Professor', 'Clinical Anatomy', 'MS (Anatomy)',          'MMC/67890', '2015-08-15', 145000, '+91 87654 32110');
+  insEmp.run(faculty.id,  'JJMMC-FAC-0001', 'General Medicine', 'Professor & HOD',    'Internal Medicine', 'MD (General Medicine)', 'KMC/12345', '2012-07-01', 185000, '+91 87654 32109');
+  insEmp.run(faculty2.id, 'JJMMC-FAC-0002', 'Anatomy',          'Associate Professor', 'Clinical Anatomy', 'MS (Anatomy)',          'KMC/67890', '2015-08-15', 145000, '+91 87654 32110');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PG SEED — idempotent. Runs on every start so existing databases created
+// before the PG programme was added get the PG demo accounts automatically.
+// ─────────────────────────────────────────────────────────────────────────────
+function seedPG() {
+  const safe = (label, fn) => {
+    try { fn(); } catch (err) { console.warn(`[seedPG] skipped ${label}: ${err.message}`); }
+  };
+
+  const pgUsers = [
+    ['adminpg',     'adminpg123',     'admin',     'PG Programme Administrator',    'adminpg@jjmmc.edu.in'],
+    ['principalpg', 'principalpg123', 'principal', 'Dr. V. Rao (PG Dean)',          'pgdean@jjmmc.edu.in'],
+    ['facultypg',   'facultypg123',   'faculty',   'Dr. N. Patel, MD (PG Guide)',   'npatel@jjmmc.edu.in'],
+    ['studentpg',   'studentpg123',   'student',   'Dr. Rohit Singh (MD Medicine)', 'rohit.pg@jjmmc.edu.in'],
+    ['studentpg2',  'studentpg123',   'student',   'Dr. Neha Gupta (MS Surgery)',   'neha.pg@jjmmc.edu.in'],
+    ['parentpg',    'parentpg123',    'parent',    'Mr. Vinod Singh',               'vsingh@gmail.com'],
+  ];
+  const getUser = db.prepare('SELECT id FROM users WHERE username = ?');
+  const insertUserPG = db.prepare(
+    `INSERT INTO users (username, password_hash, role, full_name, email, program_level) VALUES (?, ?, ?, ?, ?, 'PG')`
+  );
+  for (const [u, p, r, n, e] of pgUsers) {
+    if (!getUser.get(u)) insertUserPG.run(u, bcrypt.hashSync(p, 10), r, n, e);
+  }
+  // Make sure every seeded PG account is tagged PG (handy if they existed
+  // without program_level from an earlier run).
+  db.prepare(
+    `UPDATE users SET program_level='PG' WHERE username IN ('adminpg','principalpg','facultypg','studentpg','studentpg2','parentpg')`
+  ).run();
+
+  const pgStudent  = getUser.get('studentpg');
+  const pgStudent2 = getUser.get('studentpg2');
+  const pgFaculty  = getUser.get('facultypg');
+  const pgParent   = getUser.get('parentpg');
+  if (!pgStudent || !pgStudent2 || !pgFaculty || !pgParent) return;
+
+  safe('student_profiles', () => {
+    const hasProfile = db.prepare('SELECT 1 FROM student_profiles WHERE user_id=?');
+    const insertProfile = db.prepare(
+      `INSERT INTO student_profiles
+        (user_id,roll_no,university_reg_no,course,program_level,pg_specialty,department,mbbs_year,semester,admission_quota,dob,gender,phone,address,blood_group,parent_name,parent_phone)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+    );
+    if (!hasProfile.get(pgStudent.id)) {
+      insertProfile.run(pgStudent.id, 'MD2024005', 'JJMMC/MD/2024/005', 'MD (General Medicine)', 'PG', 'General Medicine',
+        'General Medicine', 1, 1, 'Govt', '1999-03-14', 'Male',
+        '+91 98765 55501', 'Shamanur Road, Davangere, Karnataka', 'B+', 'Vinod Singh', '+91 98765 55601');
+    }
+    if (!hasProfile.get(pgStudent2.id)) {
+      insertProfile.run(pgStudent2.id, 'MS2024008', 'JJMMC/MS/2024/008', 'MS (General Surgery)', 'PG', 'General Surgery',
+        'General Surgery', 2, 3, 'Management', '1998-11-05', 'Female',
+        '+91 98765 55502', 'Bengaluru, Karnataka', 'O+', 'Suresh Gupta', '+91 98765 55602');
+    }
+  });
+
+  safe('parents', () => {
+    const parentExists = db.prepare('SELECT 1 FROM parents WHERE user_id=?').get(pgParent.id);
+    if (!parentExists) {
+      db.prepare(`INSERT INTO parents (user_id, student_user_id, relation, phone, occupation) VALUES (?,?,?,?,?)`)
+        .run(pgParent.id, pgStudent.id, 'Father', '+91 98765 55601', 'Bank Manager');
+    }
+  });
+
+  safe('employees', () => {
+    const empExists = db.prepare('SELECT 1 FROM employees WHERE user_id=?').get(pgFaculty.id);
+    if (!empExists) {
+      db.prepare(
+        `INSERT INTO employees (user_id, emp_code, department, designation, specialization, qualification, council_reg_no, join_date, salary, phone)
+         VALUES (?,?,?,?,?,?,?,?,?,?)`
+      ).run(pgFaculty.id, 'JJMMC-FAC-0003', 'General Medicine', 'PG Guide / Professor',
+            'Nephrology', 'DM (Nephrology)', 'KMC/33445', '2016-06-01', 220000, '+91 87654 55555');
+    }
+  });
+
+  safe('fee_payments', () => {
+    const payExists = db.prepare('SELECT 1 FROM fee_payments WHERE reference=?');
+    const insertPayPG = db.prepare(`INSERT INTO fee_payments (user_id, fee_type, amount, status, reference) VALUES (?,?,?,?,?)`);
+    if (!payExists.get('TXN-PG-20001')) insertPayPG.run(pgStudent.id,  'PG Tuition (MD Yr 1)', 1200000, 'PAID', 'TXN-PG-20001');
+    if (!payExists.get('TXN-PG-20002')) insertPayPG.run(pgStudent.id,  'PG Hostel (Yr 1)',      90000,  'PAID', 'TXN-PG-20002');
+    if (!payExists.get('TXN-PG-20003')) insertPayPG.run(pgStudent2.id, 'PG Tuition (MS Yr 2)', 1200000, 'PAID', 'TXN-PG-20003');
+  });
 }
 
 function seedAdminData() {
   // ── School ────────────────────────────────────────────────────────────────
   if (db.prepare('SELECT COUNT(*) AS c FROM schools').get().c === 0) {
     db.prepare(`INSERT INTO schools (code,name,address,phone,email,principal,established)
-      VALUES ('JJMMC','Jawaharlal J. Memorial Medical College & Hospital','Near District Hospital, Pune 411038, Maharashtra','+91-20-24567890','info@jjmmc.edu.in','Dr. Anand Kulkarni (Dean)',1985)`).run();
+      VALUES ('JJMMC','J.J.M. Medical College, Davangere','MCC "B" Block, Davangere 577 004, Karnataka, India','+91-8192-231285','erpjjmmc@gmail.com','Dr. Anand Patil (Dean)',1965)`).run();
   }
+  // Idempotent sync — keep the school row aligned with current branding even
+  // on pre-existing databases that were seeded with the older Pune/MUHS values.
+  try {
+    db.prepare(`UPDATE schools SET
+      name        = 'J.J.M. Medical College, Davangere',
+      address     = 'MCC "B" Block, Davangere 577 004, Karnataka, India',
+      phone       = '+91-8192-231285',
+      email       = 'erpjjmmc@gmail.com',
+      principal   = 'Dr. Anand Patil (Dean)',
+      established = 1965
+      WHERE code='JJMMC' AND (email <> 'erpjjmmc@gmail.com' OR phone <> '+91-8192-231285' OR name <> 'J.J.M. Medical College, Davangere')`).run();
+  } catch (_) { /* column may not exist on very old schema */ }
 
   // ── Medical Departments ───────────────────────────────────────────────────
-  if (db.prepare('SELECT COUNT(*) AS c FROM departments').get().c === 0) {
-    const d = db.prepare(`INSERT INTO departments (code,name,category,hod) VALUES (?,?,?,?)`);
-    [
+  // Canonical JJMMC department list (NMC-aligned). This block runs on every
+  // start and *synchronises* the departments table to this list: any missing
+  // departments are inserted, and any legacy ones (e.g. old "Radiology") are
+  // updated in place so existing databases stay in sync with code changes.
+  {
+    const canonical = [
       // Pre-clinical
-      ['ANA', 'Anatomy',                 'pre-clinical',  'Dr. S. Iyer'],
-      ['PHY', 'Physiology',              'pre-clinical',  'Dr. V. Deshpande'],
-      ['BIO', 'Biochemistry',            'pre-clinical',  'Dr. M. Gokhale'],
+      ['ANA', 'Anatomy',                                 'pre-clinical', 'Dr. S. Iyer'],
+      ['BIO', 'Biochemistry',                            'pre-clinical', 'Dr. M. Gokhale'],
+      ['PHY', 'Physiology',                              'pre-clinical', 'Dr. V. Deshpande'],
       // Para-clinical
-      ['PAT', 'Pathology',               'para-clinical', 'Dr. K. Patil'],
-      ['PHM', 'Pharmacology',            'para-clinical', 'Dr. N. Rao'],
-      ['MIC', 'Microbiology',            'para-clinical', 'Dr. L. Joshi'],
-      ['FMT', 'Forensic Medicine',       'para-clinical', 'Dr. R. Desai'],
-      ['CMD', 'Community Medicine (PSM)', 'para-clinical', 'Dr. P. Shinde'],
+      ['MIC', 'Microbiology',                            'para-clinical','Dr. L. Joshi'],
+      ['PHM', 'Pharmacology',                            'para-clinical','Dr. N. Rao'],
+      ['PAT', 'Pathology',                               'para-clinical','Dr. K. Patil'],
+      ['FMT', 'Forensic Medicine',                       'para-clinical','Dr. R. Desai'],
+      ['CMD', 'Community Medicine',                      'para-clinical','Dr. P. Shinde'],
       // Clinical
-      ['MED', 'General Medicine',        'clinical',      'Dr. R. Sharma'],
-      ['SUR', 'General Surgery',         'clinical',      'Dr. A. Joshi'],
-      ['OBG', 'Obstetrics & Gynaecology','clinical',      'Dr. S. Kulkarni'],
-      ['PED', 'Paediatrics',             'clinical',      'Dr. H. Pawar'],
-      ['ORT', 'Orthopaedics',            'clinical',      'Dr. D. Mane'],
-      ['OPH', 'Ophthalmology',           'clinical',      'Dr. B. Chavan'],
-      ['ENT', 'ENT (Otorhinolaryngology)','clinical',     'Dr. V. Bhosale'],
-      ['DER', 'Dermatology',             'clinical',      'Dr. K. Naik'],
-      ['PSY', 'Psychiatry',              'clinical',      'Dr. U. Pandit'],
-      ['ANE', 'Anaesthesiology',         'clinical',      'Dr. N. Phadke'],
-      ['RAD', 'Radiology',               'clinical',      'Dr. S. Agashe'],
-      ['EME', 'Emergency Medicine',      'clinical',      'Dr. Y. Shetty'],
-    ].forEach(r => d.run(...r));
+      ['ENT', 'E.N.T',                                   'clinical',     'Dr. V. Bhosale'],
+      ['OPH', 'Ophthalmology',                           'clinical',     'Dr. B. Chavan'],
+      ['MED', 'General Medicine',                        'clinical',     'Dr. R. Sharma'],
+      ['SUR', 'General Surgery',                         'clinical',     'Dr. A. Joshi'],
+      ['ORT', 'Orthopaedics',                            'clinical',     'Dr. D. Mane'],
+      ['ANE', 'Anaesthesiology',                         'clinical',     'Dr. N. Phadke'],
+      ['OBG', 'Obstetrics & Gynaecology',                'clinical',     'Dr. S. Kulkarni'],
+      ['PED', 'Pediatrics',                              'clinical',     'Dr. H. Pawar'],
+      ['PSY', 'Psychiatry',                              'clinical',     'Dr. U. Pandit'],
+      ['RAD', 'Radiodiagnosis',                          'clinical',     'Dr. S. Agashe'],
+      ['DER', 'Dermatology, Venereology & Leprosy',      'clinical',     'Dr. K. Naik'],
+      ['PUL', 'Pulmonary Medicine',                      'clinical',     'Dr. T. Kamble'],
+      ['EME', 'Emergency Medicine',                      'clinical',     'Dr. Y. Shetty'],
+      ['NEO', 'Neonatology',                             'clinical',     'Dr. R. Kale'],
+      // Medical Education Unit
+      ['MEU', 'Medical Education Unit',                  'med-edu',      'Dr. S. Karnik'],
+    ];
+
+    const upsert = db.prepare(`
+      INSERT INTO departments (code, name, category, hod) VALUES (?, ?, ?, ?)
+      ON CONFLICT(code) DO UPDATE SET
+        name     = excluded.name,
+        category = excluded.category,
+        hod      = COALESCE(excluded.hod, departments.hod)
+    `);
+    db.transaction(() => {
+      for (const row of canonical) upsert.run(...row);
+    })();
   }
 
   // ── Subjects (MBBS CBME curriculum) ───────────────────────────────────────
@@ -929,13 +1049,13 @@ function seedAdminData() {
       ['CMD201', 'Community Medicine I', 'Community Medicine', 2, 3, 3],
       // MBBS Year 3 Part 1
       ['CMD301', 'Community Medicine II','Community Medicine', 3, 5, 4],
-      ['ENT301', 'ENT',                  'ENT (Otorhinolaryngology)', 3, 5, 4],
+      ['ENT301', 'E.N.T',                'E.N.T',                     3, 5, 4],
       ['OPH301', 'Ophthalmology',        'Ophthalmology',   3, 5, 4],
       // MBBS Year 3 Part 2 / Year 4
       ['MED401','General Medicine',      'General Medicine',4, 7, 10],
       ['SUR401','General Surgery',       'General Surgery', 4, 7, 10],
       ['OBG401','Obstetrics & Gynaecology','Obstetrics & Gynaecology', 4, 7, 8],
-      ['PED401','Paediatrics',           'Paediatrics',     4, 7, 6],
+      ['PED401','Pediatrics',            'Pediatrics',      4, 7, 6],
       ['ORT401','Orthopaedics',          'Orthopaedics',    4, 7, 4],
     ].forEach(r => c.run(...r));
   }
@@ -964,16 +1084,29 @@ function seedAdminData() {
   }
 
   // ── Settings ──────────────────────────────────────────────────────────────
-  if (db.prepare('SELECT COUNT(*) AS c FROM settings').get().c === 0) {
-    const s = db.prepare(`INSERT INTO settings (key,value) VALUES (?,?)`);
-    [
-      ['institution_name', 'Jawaharlal J. Memorial Medical College & Hospital'],
-      ['institution_short','JJMMC'],
-      ['institution_type', 'Medical College (MBBS)'],
-      ['affiliated_to',    'Maharashtra University of Health Sciences (MUHS)'],
-      ['recognised_by',    'National Medical Commission (NMC)'],
+  // Canonical institution settings. Upserted on every start so older databases
+  // with MUHS/Pune values get migrated to Davangere/RGUHS automatically.
+  {
+    const upsertS = db.prepare(
+      `INSERT INTO settings (key,value) VALUES (?,?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+    );
+    const canonicalOverride = [
+      ['institution_name',    'J.J.M. Medical College, Davangere'],
+      ['institution_short',   'JJMMC'],
+      ['institution_type',    'Medical College (MBBS)'],
+      ['institution_address', 'MCC "B" Block, Davangere 577 004, Karnataka, India'],
+      ['institution_phone',   '+91-8192-231285'],
+      ['institution_city',    'Davangere'],
+      ['institution_state',   'Karnataka'],
+      ['affiliated_to',       'Rajiv Gandhi University of Health Sciences (RGUHS), Bangalore'],
+      ['recognised_by',       'National Medical Commission (NMC)'],
+      ['established_year',    '1965'],
+      ['institution_email',   'erpjjmmc@gmail.com'],
+      ['support_email',       'erpjjmmc@gmail.com'],
+    ];
+    const defaultsIfMissing = [
       ['academic_year',    '2026-2027'],
-      ['support_email',    'support@jjmmc.edu.in'],
       ['maintenance_mode', 'off'],
       ['sms_provider',     'none'],
       ['timezone',         'Asia/Kolkata'],
@@ -982,7 +1115,11 @@ function seedAdminData() {
       ['max_login_attempts','5'],
       ['two_factor_auth',  'off'],
       ['min_attendance_pct','75'],
-    ].forEach(r => s.run(...r));
+    ];
+    const getS = db.prepare('SELECT value FROM settings WHERE key=?');
+    const insS = db.prepare('INSERT INTO settings (key,value) VALUES (?,?)');
+    for (const [k, v] of canonicalOverride) upsertS.run(k, v);
+    for (const [k, v] of defaultsIfMissing) if (!getS.get(k)) insS.run(k, v);
   }
 
   // ── Batches (MBBS admission-year batches) ─────────────────────────────────
@@ -1047,9 +1184,9 @@ function seedAdminData() {
       ['978-1260464504', "Harrison's Principles of Internal Medicine",'Jameson et al',         'McGraw-Hill',   'Medicine',       '21st',  6, 4, 'R-D1'],
       ['978-0702083884', 'Davidson’s Principles and Practice of Medicine','Ralston et al',    'Elsevier',      'Medicine',       '24th', 10, 7, 'R-D2'],
       ['978-1498796507', 'Bailey & Love’s Short Practice of Surgery', 'Williams et al',        'CRC Press',     'Surgery',        '28th',  8, 5, 'R-D3'],
-      ['978-9352705856', 'Ghai Essential Pediatrics',                 'Paul & Bagga',           'CBS Publishers','Paediatrics',    '9th',  10, 8, 'R-E1'],
+      ['978-9352705856', 'Ghai Essential Pediatrics',                 'Paul & Bagga',           'CBS Publishers','Pediatrics',     '9th',  10, 8, 'R-E1'],
       ['978-9389034561', 'Dutta’s Textbook of Obstetrics',            'D. C. Dutta',            'Jaypee',        'Obstetrics & Gynae','10th',8,5, 'R-E2'],
-      ['978-0323795159', 'Nelson Textbook of Pediatrics',             'Kliegman et al',         'Elsevier',      'Paediatrics',    '22nd',  4, 3, 'R-E3'],
+      ['978-0323795159', 'Nelson Textbook of Pediatrics',             'Kliegman et al',         'Elsevier',      'Pediatrics',     '22nd',  4, 3, 'R-E3'],
     ].forEach(r => b.run(...r));
   }
 
@@ -1075,15 +1212,22 @@ function seedAdminData() {
     if (room2 && stu2) db.prepare(`INSERT OR IGNORE INTO hostel_allotments (room_id,student_user_id,allotment_date,status) VALUES (?,?,?,?)`).run(room2.id, stu2.id, '2024-08-01', 'active');
   }
 
-  // ── Transport routes ──────────────────────────────────────────────────────
+  // ── Transport routes (Davangere city & outskirts) ─────────────────────────
   if (db.prepare('SELECT COUNT(*) AS c FROM transport_routes').get().c === 0) {
     const r = db.prepare(`INSERT INTO transport_routes (route_no,name,vehicle_no,driver_name,driver_phone,stops,monthly_fee) VALUES (?,?,?,?,?,?,?)`);
     [
-      ['R-01','Shivaji Nagar → JJMMC Hospital','MH12-AB-1234','Rajesh Kumar','+91 99887 76655','Shivaji Nagar, FC Road, Deccan, Campus Gate',1200],
-      ['R-02','Hadapsar → JJMMC Hospital',     'MH12-CD-5678','Suresh Patil','+91 99887 76656','Hadapsar, Wanowrie, Camp, Campus Gate',1400],
-      ['R-03','Hinjewadi → JJMMC Hospital',    'MH12-EF-9012','Mahesh Singh','+91 99887 76657','Hinjewadi, Baner, Aundh, Pashan, Campus Gate',1500],
+      ['R-01','Vidyanagar → JJMMC Campus','KA-17-AB-1234','Ramesh Kumar',   '+91 99887 76655','Vidyanagar, P.B. Road, Shamanur Rd, MCC Road, Campus Gate', 1200],
+      ['R-02','Shamanur → JJMMC Campus',  'KA-17-CD-5678','Suresha Gowda',  '+91 99887 76656','Shamanur, Avaragere, Nittuvalli, MCC B-Block, Campus Gate',1400],
+      ['R-03','Harihara → JJMMC Campus',  'KA-17-EF-9012','Mahesh Naik',    '+91 99887 76657','Harihara, Malebennur, Bilichodu, Anagodu, Campus Gate',    1500],
     ].forEach(r2 => r.run(...r2));
   }
+  // Idempotent sync for pre-existing Pune-era rows.
+  try {
+    const up = db.prepare(`UPDATE transport_routes SET name=?, vehicle_no=?, driver_name=?, driver_phone=?, stops=?, monthly_fee=? WHERE route_no=?`);
+    up.run('Vidyanagar → JJMMC Campus','KA-17-AB-1234','Ramesh Kumar','+91 99887 76655','Vidyanagar, P.B. Road, Shamanur Rd, MCC Road, Campus Gate',1200,'R-01');
+    up.run('Shamanur → JJMMC Campus',  'KA-17-CD-5678','Suresha Gowda','+91 99887 76656','Shamanur, Avaragere, Nittuvalli, MCC B-Block, Campus Gate',1400,'R-02');
+    up.run('Harihara → JJMMC Campus',  'KA-17-EF-9012','Mahesh Naik',  '+91 99887 76657','Harihara, Malebennur, Bilichodu, Anagodu, Campus Gate',1500,'R-03');
+  } catch (_) {}
 
   // ── Finance transactions ──────────────────────────────────────────────────
   if (db.prepare('SELECT COUNT(*) AS c FROM transactions').get().c === 0) {
@@ -1144,7 +1288,7 @@ function seedAdminData() {
     [
       ['Apollo Hospitals, Mumbai',  'Junior Resident (MBBS)',        'One-year JR post across departments. Stipend + accommodation.', 9.0, 'MBBS graduate, permanent registration','2026-05-20','2026-05-10','Mumbai','open'],
       ['AIIMS Delhi',               'NEET-PG Residency Orientation', 'Information session on NEET-PG prep & AIIMS MD/MS seats.',     0,   'Final-year MBBS / Interns','2026-05-05','2026-05-02','Delhi','open'],
-      ['Fortis Hospital, Pune',     'Medical Officer (Casualty)',    'Full-time MO role in Emergency Dept.',                         8.5, 'MBBS + MMC registration','2026-06-01','2026-05-25','Pune','open'],
+      ['Bapuji Hospital, Davangere','Medical Officer (Casualty)',    'Full-time MO role in Emergency Dept. at a 700-bed teaching hospital.', 8.5, 'MBBS + KMC registration','2026-06-01','2026-05-25','Davangere','open'],
       ['Christian Medical College Vellore','Fellowship in Pediatrics','1-year observership-cum-fellowship program.',                 6.0, 'MBBS + 6 mo clinical','2026-06-15','2026-05-30','Vellore','open'],
       ['Aster DM Healthcare',       'House Surgeon',                 'Compulsory Rotatory Residential Internship post.',             6.5, 'MBBS — internship completion','2026-07-01','2026-06-20','Bengaluru','open'],
     ].forEach(r => d.run(...r));
@@ -1240,7 +1384,7 @@ function seedAdminData() {
     const c = db.prepare(`INSERT INTO campaigns (title,type,description,target_audience,start_date,end_date,budget,leads_generated,conversions,status,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?)`);
     c.run('MBBS Admission 2026-27 (Management Quota)','social','Digital campaign targeting NEET qualifiers', 'NEET-UG qualified students','2026-03-01','2026-07-31',250000,380,95,'active',admin?.id);
     c.run('Free Health Camp — OPD Outreach',           'event', 'Village health camp for community outreach','General public — 30 km radius','2026-04-20','2026-04-22',85000,0,0,'planned',admin?.id);
-    c.run('Alumni Reunion 2026',                       'email', 'Invite all JJMMC alumni for Silver Jubilee','Alumni (JJMMC 2000-2025)','2026-05-01','2026-08-15',120000,0,0,'planned',admin?.id);
+    c.run('Alumni Reunion 2026 (Diamond Jubilee)',     'email', 'Invite all JJMMC alumni for Diamond Jubilee (60 years since 1965)','Alumni (JJMMC 1970-2025)','2026-05-01','2026-08-15',120000,0,0,'planned',admin?.id);
   }
 
   // ── Clients (hospital tie-ups, pharma, etc.) ──────────────────────────────
@@ -1251,7 +1395,7 @@ function seedAdminData() {
       ['Max Healthcare',     'Max Super Speciality',   'Healthcare',         'Dr. M. Nair',    '+91 80000 22222','training@maxhealthcare.com',  'active'],
       ['Pfizer India',       'Pfizer Pharmaceuticals', 'Pharmaceutical',     'Mr. S. Patil',   '+91 80000 33333','research@pfizer.co.in',       'active'],
       ['Cipla R&D',          'Cipla Ltd',              'Pharmaceutical',     'Dr. P. Desai',   '+91 80000 44444','academia@cipla.com',          'active'],
-      ['Red Cross — Pune',   'Indian Red Cross Society','NGO / Blood Bank',  'Mr. A. Shinde',  '+91 80000 55555','pune@indianredcross.org',     'active'],
+      ['Red Cross — Davangere','Indian Red Cross Society','NGO / Blood Bank', 'Mr. A. Shetty',  '+91 80000 55555','davangere@indianredcross.org','active'],
     ].forEach(r => c.run(...r));
   }
 
@@ -1284,7 +1428,7 @@ function seedAdminData() {
     cp.run(batch22?.id, null, med?.id, 'General Medicine',       'MICU / General Ward', 'morning',  '2026-04-01','2026-04-30', fac?.id, 'ongoing',   '4-week clinical posting in General Medicine');
     cp.run(batch22?.id, null, sur?.id, 'General Surgery',        'Surgical Ward-1',     'morning',  '2026-05-01','2026-05-30', null,    'scheduled', 'General Surgery 4-week posting');
     cp.run(batch22?.id, null, obg?.id, 'Obstetrics & Gynaecology','Labour Ward',        'morning',  '2026-06-01','2026-06-30', null,    'scheduled', 'OBG posting — labour ward focus');
-    cp.run(batch22?.id, null, ped?.id, 'Paediatrics',            'Paeds Ward / NICU',   'morning',  '2026-07-01','2026-07-30', null,    'scheduled', 'Paediatrics — Ward + NICU exposure');
+    cp.run(batch22?.id, null, ped?.id, 'Pediatrics',             'Paeds Ward / NICU',   'morning',  '2026-07-01','2026-07-30', null,    'scheduled', 'Pediatrics — Ward + NICU exposure');
     // Individual student (Priya) additional posting
     cp.run(null, stu2?.id, med?.id, 'General Medicine', 'Cardiology Unit', 'evening', '2026-04-15','2026-04-22', fac?.id, 'ongoing',   'Extra cardiology rotation for Priya Mehta');
     // Year-2 (Aarav) pathology posting
@@ -1340,9 +1484,170 @@ function seedAdminData() {
       pl.run(stu2.id,'2026-04-12','IV Cannulation (18G)',        'General Medicine','IPD-1263','performed', null,   'pending', null,null,'Emergency cannulation during seizure');
     }
   }
+
+  // ── Idempotent Davangere / RGUHS branding sync ────────────────────────────
+  // Runs on every start so databases seeded with older Pune/MUHS data get
+  // migrated in place. Safe to re-run — each statement only updates rows that
+  // still carry a stale value.
+  try {
+    db.prepare(`UPDATE student_profiles SET address='Vidyanagar, Davangere, Karnataka' WHERE address='Pune, Maharashtra'`).run();
+    db.prepare(`UPDATE student_profiles SET address='Bengaluru, Karnataka'            WHERE address='Mumbai, Maharashtra'`).run();
+    db.prepare(`UPDATE student_profiles SET address='Shamanur Road, Davangere, Karnataka' WHERE address='Pune, Maharashtra ' OR address LIKE 'Pune%'`).run();
+  } catch (_) {}
+  try {
+    db.prepare(`UPDATE student_profiles SET parent_name='Dinesh Patil' WHERE parent_name='Dinesh Kulkarni'`).run();
+    db.prepare(`UPDATE student_profiles SET parent_name='Ramesh Hegde' WHERE parent_name='Ramesh Mehta'`).run();
+  } catch (_) {}
+  try {
+    db.prepare(`UPDATE employees SET council_reg_no = REPLACE(council_reg_no, 'MMC/', 'KMC/') WHERE council_reg_no LIKE 'MMC/%'`).run();
+  } catch (_) {}
+  try {
+    db.prepare(`UPDATE clients SET name='Red Cross — Davangere', email='davangere@indianredcross.org', contact_person='Mr. A. Shetty' WHERE name='Red Cross — Pune'`).run();
+  } catch (_) {}
+  try {
+    db.prepare(`UPDATE placement_drives SET company='Bapuji Hospital, Davangere', location='Davangere', eligibility=REPLACE(eligibility,'MMC','KMC') WHERE company='Fortis Hospital, Pune'`).run();
+  } catch (_) {}
+  try {
+    db.prepare(`UPDATE campaigns SET title='Alumni Reunion 2026 (Diamond Jubilee)', description='Invite all JJMMC alumni for Diamond Jubilee (60 years since 1965)', target_audience='Alumni (JJMMC 1970-2025)' WHERE title='Alumni Reunion 2026'`).run();
+  } catch (_) {}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MIGRATIONS — idempotent ALTERs for DBs that were created before new columns
+// were added. Each attempt is wrapped in try/catch because better-sqlite3
+// throws if the column already exists.
+// ─────────────────────────────────────────────────────────────────────────────
+function addColumn(table, colDef) {
+  try { db.exec(`ALTER TABLE ${table} ADD COLUMN ${colDef}`); } catch { /* already exists */ }
+}
+
+// IA exams — tag which IA round an exam is (1, 2 or 3) for a Professional
+addColumn('exam_schedules', `ia_number INTEGER`);
+
+// Programme tag for every user (UG / PG). Students still resolve through
+// student_profiles.program_level, but non-student roles (admin / principal /
+// faculty / parent) use this column directly to decide which portal tree to
+// serve after login.
+addColumn('users', `program_level TEXT DEFAULT 'UG'`);
+
+// Older DBs may be missing medical-college columns added later to `employees`.
+[
+  `specialization TEXT`,
+  `qualification TEXT`,
+  `council_reg_no TEXT`,
+  `join_date DATE`,
+  `salary REAL DEFAULT 0`,
+  `bank_account TEXT`,
+  `pan TEXT`,
+  `pf_number TEXT`,
+  `phone TEXT`,
+  `address TEXT`,
+].forEach((col) => addColumn('employees', col));
+
+// UG / PG + program details on student profiles
+addColumn('student_profiles', `program_level TEXT DEFAULT 'UG'`);
+addColumn('student_profiles', `pg_specialty TEXT`);
+
+// Older DBs may be missing the medical-college columns that were added to
+// student_profiles later. Re-run these idempotently so existing databases
+// get upgraded without a manual wipe.
+[
+  `roll_no TEXT`,
+  `university_reg_no TEXT`,
+  `course TEXT DEFAULT 'MBBS'`,
+  `department TEXT`,
+  `batch_id INTEGER`,
+  `mbbs_year INTEGER`,
+  `semester INTEGER`,
+  `admission_quota TEXT`,
+  `neet_rank INTEGER`,
+  `dob TEXT`,
+  `gender TEXT`,
+  `phone TEXT`,
+  `address TEXT`,
+  `blood_group TEXT`,
+  `aadhaar TEXT`,
+  `parent_name TEXT`,
+  `parent_phone TEXT`,
+  `photo_url TEXT`,
+  `rfid_code TEXT`,
+].forEach((col) => addColumn('student_profiles', col));
+
+// Batch hierarchy: parent batch → sub-batches (theory / practical / clinical)
+addColumn('batches', `parent_id INTEGER REFERENCES batches(id) ON DELETE CASCADE`);
+addColumn('batches', `section_type TEXT DEFAULT 'theory'`);   // theory / practical / clinical / mentor-group
+addColumn('batches', `mentor_id INTEGER REFERENCES users(id) ON DELETE SET NULL`);
+
+// Timetable slots come from the time_schedule master when selected
+addColumn('timetable', `schedule_slot_id INTEGER REFERENCES time_schedule(id) ON DELETE SET NULL`);
+addColumn('timetable', `academic_year TEXT`);
+addColumn('timetable', `section_type TEXT`);
+
+// Per-batch faculty (mentor / clinical faculty / lecturer assignments)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS batch_faculty (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    batch_id   INTEGER NOT NULL,
+    faculty_id INTEGER NOT NULL,
+    role       TEXT DEFAULT 'faculty',          -- mentor / clinical / theory / practical / faculty
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (batch_id)   REFERENCES batches(id) ON DELETE CASCADE,
+    FOREIGN KEY (faculty_id) REFERENCES users(id)   ON DELETE CASCADE,
+    UNIQUE(batch_id, faculty_id, role)
+  );
+
+  -- Master list of time slots (9:00-10:00, 10:00-11:00, ...) used by Timetable
+  CREATE TABLE IF NOT EXISTS time_schedule (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    period_no     INTEGER NOT NULL,
+    label         TEXT,                         -- "P1", "Lunch", "Morning Session"
+    start_time    TEXT NOT NULL,                -- "09:00"
+    end_time      TEXT NOT NULL,                -- "10:00"
+    kind          TEXT DEFAULT 'class',         -- class / break / clinical / practical
+    academic_year TEXT,
+    created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(period_no, academic_year)
+  );
+
+  -- Generic allocation system: admin assigns a task / patient message / duty
+  -- to one of a batch, a student, or a faculty member.
+  CREATE TABLE IF NOT EXISTS allocations (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    category      TEXT NOT NULL DEFAULT 'task',      -- task / duty / patient_message / announcement / other
+    title         TEXT NOT NULL,
+    message       TEXT,
+    assignee_type TEXT NOT NULL,                     -- batch / student / faculty
+    assignee_id   INTEGER,                           -- user_id or batch_id depending on assignee_type
+    batch_id      INTEGER,                           -- optional filter-within-batch (for student assignments)
+    priority      TEXT DEFAULT 'normal',             -- low / normal / high / urgent
+    due_date      DATE,
+    status        TEXT DEFAULT 'pending',            -- pending / in-progress / completed / cancelled
+    created_by    INTEGER,
+    created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (batch_id)   REFERENCES batches(id) ON DELETE SET NULL,
+    FOREIGN KEY (created_by) REFERENCES users(id)   ON DELETE SET NULL
+  );
+`);
+
+// Seed a default time-schedule grid if empty
+if (db.prepare('SELECT COUNT(*) AS c FROM time_schedule').get().c === 0) {
+  const ts = db.prepare(`INSERT INTO time_schedule (period_no,label,start_time,end_time,kind,academic_year) VALUES (?,?,?,?,?,?)`);
+  const ay = '2026-2027';
+  [
+    [1,'P1','09:00','10:00','class',ay],
+    [2,'P2','10:00','11:00','class',ay],
+    [3,'Break','11:00','11:15','break',ay],
+    [4,'P3','11:15','12:15','class',ay],
+    [5,'P4','12:15','13:15','class',ay],
+    [6,'Lunch','13:15','14:00','break',ay],
+    [7,'P5','14:00','15:00','clinical',ay],
+    [8,'P6','15:00','16:00','clinical',ay],
+    [9,'P7','16:00','17:00','practical',ay],
+  ].forEach(r => { try { ts.run(...r); } catch {} });
 }
 
 seed();
 seedAdminData();
+seedPG();
 
 module.exports = db;

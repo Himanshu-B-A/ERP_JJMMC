@@ -11,6 +11,7 @@ router.get('/profile', only, (req, res) => {
   const row = db.prepare(`SELECT u.id,u.username,u.full_name,u.email,u.role,u.created_at,
     p.roll_no,p.university_reg_no,p.course,p.department,p.batch_id,p.mbbs_year,p.semester,p.admission_quota,p.neet_rank,
     p.dob,p.gender,p.phone,p.address,p.blood_group,p.aadhaar,p.parent_name,p.parent_phone,p.rfid_code,
+    COALESCE(p.program_level,'UG') AS program_level, p.pg_specialty,
     b.name AS batch_name, b.code AS batch_code
     FROM users u
     LEFT JOIN student_profiles p ON p.user_id=u.id
@@ -427,6 +428,43 @@ router.get('/supervisors', only, (req, res) => {
     WHERE u.role='faculty' AND u.is_active=1 ORDER BY u.full_name
   `).all();
   res.json({ items: rows });
+});
+
+// ── Allocations assigned to me or to a batch I'm in ──────────────
+router.get('/allocations', only, (req, res) => {
+  const uid = req.session.user.id;
+  const { status, category } = req.query;
+  let sql = `SELECT a.*,
+      b.code AS batch_code, b.name AS batch_name,
+      creator.full_name AS created_by_name
+      FROM allocations a
+      LEFT JOIN batches b ON b.id = CASE WHEN a.assignee_type='batch' THEN a.assignee_id ELSE a.batch_id END
+      LEFT JOIN users creator ON creator.id=a.created_by
+      WHERE (
+        (a.assignee_type='student' AND a.assignee_id=?)
+        OR (a.assignee_type='batch' AND a.assignee_id IN
+            (SELECT batch_id FROM batch_students WHERE student_user_id=?))
+      )`;
+  const a = [uid, uid];
+  if (status)   { sql += ' AND a.status=?';   a.push(status); }
+  if (category) { sql += ' AND a.category=?'; a.push(category); }
+  sql += ' ORDER BY a.priority DESC, COALESCE(a.due_date, a.created_at) DESC LIMIT 200';
+  res.json({ items: db.prepare(sql).all(...a) });
+});
+
+router.put('/allocations/:id/status', only, (req, res) => {
+  const { status } = req.body || {};
+  const allowed = ['pending','in-progress','completed','cancelled'];
+  if (!allowed.includes(status)) return res.status(400).json({ error: 'invalid status' });
+  const uid = req.session.user.id;
+  const row = db.prepare(`SELECT * FROM allocations WHERE id=? AND (
+      (assignee_type='student' AND assignee_id=?)
+      OR (assignee_type='batch' AND assignee_id IN
+          (SELECT batch_id FROM batch_students WHERE student_user_id=?))
+    )`).get(Number(req.params.id), uid, uid);
+  if (!row) return res.status(404).json({ error: 'allocation not found or not yours' });
+  db.prepare('UPDATE allocations SET status=? WHERE id=?').run(status, Number(req.params.id));
+  res.json({ ok: true });
 });
 
 module.exports = router;

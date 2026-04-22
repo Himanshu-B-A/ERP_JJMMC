@@ -95,28 +95,159 @@ router.delete('/users/:id', only, (req, res) => {
 // STUDENT PROFILES
 // ═══════════════════════════════════════════════════════════════════
 router.get('/students', only, (req, res) => {
-  const { dept, q, page=1, per=20 } = req.query;
+  const { dept, q, program_level, mbbs_year, page=1, per=20 } = req.query;
   let sql = `SELECT u.id,u.username,u.full_name,u.email,u.is_active,
-    p.roll_no,p.department,p.semester,p.phone,p.rfid_code
+    p.roll_no,p.department,p.semester,p.mbbs_year,p.program_level,p.pg_specialty,p.phone,p.rfid_code
     FROM users u LEFT JOIN student_profiles p ON p.user_id=u.id
     WHERE u.role='student'`;
   const a=[];
-  if (dept) { sql+=' AND p.department=?'; a.push(dept); }
-  if (q)    { sql+=' AND (u.full_name LIKE ? OR p.roll_no LIKE ? OR u.email LIKE ?)'; a.push(`%${q}%`,`%${q}%`,`%${q}%`); }
+  if (dept)          { sql+=' AND p.department=?';    a.push(dept); }
+  if (program_level) { sql+=' AND COALESCE(p.program_level,?)=?'; a.push('UG', program_level); }
+  if (mbbs_year)     { sql+=' AND p.mbbs_year=?';     a.push(Number(mbbs_year)); }
+  if (q)             { sql+=' AND (u.full_name LIKE ? OR p.roll_no LIKE ? OR u.email LIKE ? OR p.pg_specialty LIKE ?)'; a.push(`%${q}%`,`%${q}%`,`%${q}%`,`%${q}%`); }
   const total = db.prepare(sql.replace(/SELECT.*FROM users/s,'SELECT COUNT(*) AS c FROM users')).get(...a).c;
-  sql+=' ORDER BY p.roll_no LIMIT ? OFFSET ?';
+  sql+=' ORDER BY p.mbbs_year,p.roll_no LIMIT ? OFFSET ?';
   res.json({ students: db.prepare(sql).all(...a,Number(per),(Number(page)-1)*Number(per)), total });
 });
 
 router.put('/students/:id/profile', only, (req, res) => {
-  const { roll_no, department, semester, dob, phone, address, blood_group, parent_name, parent_phone, rfid_code } = req.body||{};
-  db.prepare(`INSERT INTO student_profiles (user_id,roll_no,department,semester,dob,phone,address,blood_group,parent_name,parent_phone,rfid_code)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?)
-    ON CONFLICT(user_id) DO UPDATE SET roll_no=excluded.roll_no,department=excluded.department,
-    semester=excluded.semester,dob=excluded.dob,phone=excluded.phone,address=excluded.address,
-    blood_group=excluded.blood_group,parent_name=excluded.parent_name,parent_phone=excluded.parent_phone,rfid_code=excluded.rfid_code`
-  ).run(Number(req.params.id),roll_no||null,department||null,semester?Number(semester):null,dob||null,phone||null,address||null,blood_group||null,parent_name||null,parent_phone||null,rfid_code||null);
+  const { roll_no, department, semester, mbbs_year, program_level, pg_specialty,
+          dob, phone, address, blood_group, parent_name, parent_phone, rfid_code } = req.body || {};
+  db.prepare(`INSERT INTO student_profiles
+      (user_id,roll_no,department,semester,mbbs_year,program_level,pg_specialty,
+       dob,phone,address,blood_group,parent_name,parent_phone,rfid_code)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      ON CONFLICT(user_id) DO UPDATE SET
+        roll_no=excluded.roll_no,
+        department=excluded.department,
+        semester=excluded.semester,
+        mbbs_year=excluded.mbbs_year,
+        program_level=excluded.program_level,
+        pg_specialty=excluded.pg_specialty,
+        dob=excluded.dob,
+        phone=excluded.phone,
+        address=excluded.address,
+        blood_group=excluded.blood_group,
+        parent_name=excluded.parent_name,
+        parent_phone=excluded.parent_phone,
+        rfid_code=excluded.rfid_code`
+  ).run(
+    Number(req.params.id),
+    roll_no || null, department || null,
+    semester ? Number(semester) : null,
+    mbbs_year ? Number(mbbs_year) : null,
+    program_level || 'UG',
+    pg_specialty || null,
+    dob || null, phone || null, address || null, blood_group || null,
+    parent_name || null, parent_phone || null, rfid_code || null
+  );
   res.json({ ok: true });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// STUDENTS — BULK IMPORT (CSV / Excel uploaded as JSON rows from client)
+// ═══════════════════════════════════════════════════════════════════
+// Expects body: { rows: [ { username, full_name, email, password, roll_no,
+//   university_reg_no, program_level, pg_specialty, course, department,
+//   mbbs_year, semester, admission_quota, dob, gender, phone, address,
+//   blood_group, parent_name, parent_phone }, ... ] }
+router.post('/students/import', only, (req, res) => {
+  const rows = Array.isArray(req.body?.rows) ? req.body.rows : null;
+  if (!rows || !rows.length)
+    return res.status(400).json({ error: 'rows array is required' });
+
+  const existsUser = db.prepare('SELECT id FROM users WHERE username = ?');
+  const insertUser = db.prepare(
+    `INSERT INTO users (username, password_hash, role, full_name, email, program_level)
+     VALUES (?, ?, 'student', ?, ?, ?)`
+  );
+  const insertProfile = db.prepare(
+    `INSERT INTO student_profiles
+       (user_id, roll_no, university_reg_no, course, program_level, pg_specialty,
+        department, mbbs_year, semester, admission_quota, dob, gender, phone,
+        address, blood_group, parent_name, parent_phone)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+     ON CONFLICT(user_id) DO UPDATE SET
+        roll_no=excluded.roll_no,
+        university_reg_no=excluded.university_reg_no,
+        course=excluded.course,
+        program_level=excluded.program_level,
+        pg_specialty=excluded.pg_specialty,
+        department=excluded.department,
+        mbbs_year=excluded.mbbs_year,
+        semester=excluded.semester,
+        admission_quota=excluded.admission_quota,
+        dob=excluded.dob, gender=excluded.gender, phone=excluded.phone,
+        address=excluded.address, blood_group=excluded.blood_group,
+        parent_name=excluded.parent_name, parent_phone=excluded.parent_phone`
+  );
+
+  const trim = (v) => (v === undefined || v === null) ? null : (String(v).trim() || null);
+  const num  = (v) => { const n = Number(v); return Number.isFinite(n) ? n : null; };
+
+  const summary = { total: rows.length, created: 0, updated: 0, skipped: 0, errors: [] };
+
+  const runAll = db.transaction((list) => {
+    list.forEach((raw, idx) => {
+      try {
+        const username  = trim(raw.username);
+        const full_name = trim(raw.full_name) || trim(raw.name);
+        if (!username || !full_name) {
+          summary.skipped++;
+          summary.errors.push({ row: idx + 2, error: 'username and full_name are required' });
+          return;
+        }
+
+        const program_level = (trim(raw.program_level) || 'UG').toUpperCase() === 'PG' ? 'PG' : 'UG';
+        const email = trim(raw.email);
+        const password = trim(raw.password) || `${username}123`;
+
+        let userId;
+        const existing = existsUser.get(username);
+        if (existing) {
+          userId = existing.id;
+          db.prepare('UPDATE users SET full_name=?, email=COALESCE(?,email), program_level=? WHERE id=?')
+            .run(full_name, email, program_level, userId);
+          summary.updated++;
+        } else {
+          const info = insertUser.run(
+            username, bcrypt.hashSync(password, 10),
+            full_name, email, program_level
+          );
+          userId = info.lastInsertRowid;
+          summary.created++;
+        }
+
+        insertProfile.run(
+          userId,
+          trim(raw.roll_no), trim(raw.university_reg_no),
+          trim(raw.course) || (program_level === 'PG' ? 'MD/MS' : 'MBBS'),
+          program_level, trim(raw.pg_specialty),
+          trim(raw.department),
+          num(raw.mbbs_year), num(raw.semester),
+          trim(raw.admission_quota),
+          trim(raw.dob), trim(raw.gender), trim(raw.phone),
+          trim(raw.address), trim(raw.blood_group),
+          trim(raw.parent_name), trim(raw.parent_phone),
+        );
+      } catch (err) {
+        summary.skipped++;
+        summary.errors.push({ row: idx + 2, error: err.message });
+      }
+    });
+  });
+
+  try {
+    runAll(rows);
+  } catch (err) {
+    return res.status(500).json({ error: err.message, summary });
+  }
+
+  logActivity(
+    req.session.user.id, 'IMPORT_STUDENTS', 'users', null,
+    `Imported: ${summary.created} created, ${summary.updated} updated, ${summary.skipped} skipped`,
+  );
+  res.json({ ok: true, summary });
 });
 
 // ═══════════════════════════════════════════════════════════════════
@@ -176,41 +307,131 @@ router.delete('/courses/:id', only, (req, res) => {
 // BATCHES
 // ═══════════════════════════════════════════════════════════════════
 router.get('/batches', only, (req, res) => {
-  const batches = db.prepare('SELECT b.*,(SELECT COUNT(*) FROM batch_students WHERE batch_id=b.id) AS enrolled FROM batches b ORDER BY b.code').all();
-  res.json({ items: batches });
+  const { parent_id, only_parents } = req.query;
+  let sql = `SELECT b.*,
+      (SELECT COUNT(*) FROM batch_students WHERE batch_id=b.id) AS enrolled,
+      (SELECT COUNT(*) FROM batches c WHERE c.parent_id=b.id)   AS sub_count,
+      mentor.full_name AS mentor_name,
+      parent.code AS parent_code, parent.name AS parent_name
+      FROM batches b
+      LEFT JOIN users mentor   ON mentor.id=b.mentor_id
+      LEFT JOIN batches parent ON parent.id=b.parent_id
+      WHERE 1=1`;
+  const a = [];
+  if (only_parents === '1') sql += ` AND b.parent_id IS NULL`;
+  if (parent_id)            { sql += ` AND b.parent_id=?`; a.push(Number(parent_id)); }
+  sql += ` ORDER BY COALESCE(b.parent_id,b.id), b.section_type, b.code`;
+  res.json({ items: db.prepare(sql).all(...a) });
 });
+
 router.post('/batches', only, (req, res) => {
-  const { code, name, department, academic_year, semester, start_date, end_date, capacity } = req.body||{};
-  if (!code||!name) return res.status(400).json({ error: 'code and name required' });
+  const { code, name, department, academic_year, semester, start_date, end_date, capacity,
+          parent_id, section_type, mentor_id } = req.body || {};
+  if (!code || !name) return res.status(400).json({ error: 'code and name required' });
   try {
-    const info = db.prepare('INSERT INTO batches (code,name,department,academic_year,semester,start_date,end_date,capacity) VALUES (?,?,?,?,?,?,?,?)')
-      .run(code,name,department||null,academic_year||null,semester?Number(semester):null,start_date||null,end_date||null,capacity?Number(capacity):60);
-    res.json({ ok:true, id: info.lastInsertRowid });
-  } catch { res.status(409).json({ error: 'code already exists' }); }
+    const info = db.prepare(`INSERT INTO batches
+        (code,name,department,academic_year,semester,start_date,end_date,capacity,
+         parent_id,section_type,mentor_id)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(
+      code, name, department || null, academic_year || null,
+      semester ? Number(semester) : null,
+      start_date || null, end_date || null,
+      capacity ? Number(capacity) : 60,
+      parent_id ? Number(parent_id) : null,
+      section_type || 'theory',
+      mentor_id ? Number(mentor_id) : null
+    );
+    res.json({ ok: true, id: info.lastInsertRowid });
+  } catch (e) {
+    res.status(409).json({ error: e.message || 'code already exists' });
+  }
 });
+
+router.put('/batches/:id', only, (req, res) => {
+  const allow = ['name','department','academic_year','semester','start_date','end_date',
+                 'capacity','parent_id','section_type','mentor_id'];
+  const fields = [], vals = [];
+  for (const k of allow) if (k in req.body) {
+    fields.push(`${k}=?`); vals.push(req.body[k] === '' ? null : req.body[k]);
+  }
+  if (!fields.length) return res.json({ ok: true });
+  vals.push(Number(req.params.id));
+  db.prepare(`UPDATE batches SET ${fields.join(',')} WHERE id=?`).run(...vals);
+  res.json({ ok: true });
+});
+
 router.delete('/batches/:id', only, (req, res) => {
   const info = db.prepare('DELETE FROM batches WHERE id=?').run(Number(req.params.id));
   if (!info.changes) return res.status(404).json({ error: 'not found' });
-  res.json({ ok:true });
+  res.json({ ok: true });
 });
+
+router.get('/batches/:id', only, (req, res) => {
+  const batch = db.prepare(`SELECT b.*, mentor.full_name AS mentor_name,
+        parent.code AS parent_code, parent.name AS parent_name
+        FROM batches b
+        LEFT JOIN users   mentor ON mentor.id=b.mentor_id
+        LEFT JOIN batches parent ON parent.id=b.parent_id
+        WHERE b.id=?`).get(Number(req.params.id));
+  if (!batch) return res.status(404).json({ error: 'not found' });
+  const subs = db.prepare(`SELECT b.*, mentor.full_name AS mentor_name,
+        (SELECT COUNT(*) FROM batch_students WHERE batch_id=b.id) AS enrolled
+        FROM batches b LEFT JOIN users mentor ON mentor.id=b.mentor_id
+        WHERE b.parent_id=? ORDER BY b.section_type, b.code`).all(batch.id);
+  const faculty = db.prepare(`SELECT bf.*, u.full_name, u.username
+        FROM batch_faculty bf JOIN users u ON u.id=bf.faculty_id
+        WHERE bf.batch_id=? ORDER BY bf.role, u.full_name`).all(batch.id);
+  res.json({ batch, subs, faculty });
+});
+
 router.get('/batches/:id/students', only, (req, res) => {
-  const rows = db.prepare(`SELECT u.id,u.full_name,u.username,p.roll_no,p.department,bs.enrolled_on
-    FROM batch_students bs JOIN users u ON u.id=bs.student_user_id
-    LEFT JOIN student_profiles p ON p.user_id=u.id
-    WHERE bs.batch_id=? ORDER BY p.roll_no`).all(Number(req.params.id));
+  const rows = db.prepare(`SELECT u.id,u.full_name,u.username,p.roll_no,p.department,
+        p.mbbs_year,p.program_level,p.pg_specialty,bs.enrolled_on
+        FROM batch_students bs JOIN users u ON u.id=bs.student_user_id
+        LEFT JOIN student_profiles p ON p.user_id=u.id
+        WHERE bs.batch_id=? ORDER BY p.roll_no`).all(Number(req.params.id));
   res.json({ items: rows });
 });
+
 router.post('/batches/:id/students', only, (req, res) => {
-  const { student_user_id } = req.body||{};
-  if (!student_user_id) return res.status(400).json({ error: 'student_user_id required' });
-  try {
-    db.prepare('INSERT INTO batch_students (batch_id,student_user_id) VALUES (?,?)').run(Number(req.params.id),Number(student_user_id));
-    res.json({ ok:true });
-  } catch { res.status(409).json({ error: 'already enrolled' }); }
+  const { student_user_id, student_user_ids } = req.body || {};
+  const ids = Array.isArray(student_user_ids) && student_user_ids.length
+    ? student_user_ids.map(Number) : (student_user_id ? [Number(student_user_id)] : []);
+  if (!ids.length) return res.status(400).json({ error: 'student_user_id(s) required' });
+  const ins = db.prepare('INSERT OR IGNORE INTO batch_students (batch_id,student_user_id) VALUES (?,?)');
+  let added = 0;
+  db.transaction(() => { for (const sid of ids) added += ins.run(Number(req.params.id), sid).changes; })();
+  res.json({ ok: true, added });
 });
+
 router.delete('/batches/:id/students/:sid', only, (req, res) => {
-  db.prepare('DELETE FROM batch_students WHERE batch_id=? AND student_user_id=?').run(Number(req.params.id),Number(req.params.sid));
-  res.json({ ok:true });
+  db.prepare('DELETE FROM batch_students WHERE batch_id=? AND student_user_id=?')
+    .run(Number(req.params.id), Number(req.params.sid));
+  res.json({ ok: true });
+});
+
+// ── Per-batch faculty assignments (mentor / clinical / theory …) ────
+router.get('/batches/:id/faculty', only, (req, res) => {
+  const rows = db.prepare(`SELECT bf.*, u.full_name, u.username
+        FROM batch_faculty bf JOIN users u ON u.id=bf.faculty_id
+        WHERE bf.batch_id=? ORDER BY bf.role, u.full_name`).all(Number(req.params.id));
+  res.json({ items: rows });
+});
+router.post('/batches/:id/faculty', only, (req, res) => {
+  const { faculty_id, role } = req.body || {};
+  if (!faculty_id) return res.status(400).json({ error: 'faculty_id required' });
+  try {
+    db.prepare('INSERT INTO batch_faculty (batch_id,faculty_id,role) VALUES (?,?,?)')
+      .run(Number(req.params.id), Number(faculty_id), role || 'faculty');
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(409).json({ error: e.message || 'already assigned' });
+  }
+});
+router.delete('/batches/:id/faculty/:bfId', only, (req, res) => {
+  db.prepare('DELETE FROM batch_faculty WHERE id=? AND batch_id=?')
+    .run(Number(req.params.bfId), Number(req.params.id));
+  res.json({ ok: true });
 });
 
 // ═══════════════════════════════════════════════════════════════════
@@ -360,18 +581,63 @@ router.get('/attendance', only, (req, res) => {
 // EXAM SCHEDULES & RESULTS
 // ═══════════════════════════════════════════════════════════════════
 router.get('/exams', only, (req, res) => {
-  res.json({ items: db.prepare('SELECT e.*,u.username AS created_by_name FROM exam_schedules e LEFT JOIN users u ON u.id=e.created_by ORDER BY e.exam_date').all() });
+  const { exam_type, professional, course_code } = req.query;
+  let sql = `SELECT e.*, u.username AS created_by_name
+             FROM exam_schedules e LEFT JOIN users u ON u.id=e.created_by WHERE 1=1`;
+  const a = [];
+  if (exam_type)    { sql += ` AND e.exam_type=?`;    a.push(exam_type); }
+  if (professional) { sql += ` AND e.professional=?`; a.push(professional); }
+  if (course_code)  { sql += ` AND e.course_code=?`;  a.push(course_code); }
+  sql += ` ORDER BY e.exam_date DESC, e.id DESC`;
+  res.json({ items: db.prepare(sql).all(...a) });
 });
 router.post('/exams', only, (req, res) => {
-  const { title, course_code, exam_date, exam_time, duration_mins, room, total_marks, passing_marks, academic_year } = req.body||{};
+  const { title, course_code, exam_type, professional, ia_number,
+          exam_date, exam_time, duration_mins, room,
+          total_marks, passing_marks, academic_year } = req.body||{};
   if (!title) return res.status(400).json({ error: 'title required' });
-  const info = db.prepare('INSERT INTO exam_schedules (title,course_code,exam_date,exam_time,duration_mins,room,total_marks,passing_marks,academic_year,created_by) VALUES (?,?,?,?,?,?,?,?,?,?)')
-    .run(title,course_code||null,exam_date||null,exam_time||null,Number(duration_mins)||180,room||null,Number(total_marks)||100,Number(passing_marks)||40,academic_year||null,req.session.user.id);
+  const et  = exam_type || 'Theory';
+  const ian = et === 'IA' ? (Number(ia_number) || 1) : null;
+  const info = db.prepare(`INSERT INTO exam_schedules
+      (title,course_code,exam_type,professional,ia_number,exam_date,exam_time,
+       duration_mins,room,total_marks,passing_marks,academic_year,created_by)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(title, course_code||null, et, professional||null, ian,
+         exam_date||null, exam_time||null,
+         Number(duration_mins)||180, room||null,
+         Number(total_marks)||(et==='IA'?25:100),
+         Number(passing_marks)||(et==='IA'?10:40),
+         academic_year||null, req.session.user.id);
   res.json({ ok:true, id: info.lastInsertRowid });
 });
 router.delete('/exams/:id', only, (req, res) => {
   db.prepare('DELETE FROM exam_schedules WHERE id=?').run(Number(req.params.id));
   res.json({ ok:true });
+});
+
+// Bulk create IA rounds (IA-1 / IA-2 / IA-3) for a subject in one call
+router.post('/exams/create-ia-set', only, (req, res) => {
+  const { course_code, professional, academic_year, total_marks, passing_marks,
+          ia_dates = [] } = req.body || {};
+  if (!course_code) return res.status(400).json({ error: 'course_code required' });
+  const course = db.prepare('SELECT name FROM courses WHERE code=?').get(course_code);
+  const name = course?.name || course_code;
+  const ins = db.prepare(`INSERT INTO exam_schedules
+      (title,course_code,exam_type,professional,ia_number,exam_date,total_marks,passing_marks,academic_year,created_by)
+      VALUES (?,?,?,?,?,?,?,?,?,?)`);
+  const ids = [];
+  db.transaction(() => {
+    for (const n of [1,2,3]) {
+      const info = ins.run(
+        `${name} — IA-${n}`, course_code, 'IA', professional || null, n,
+        ia_dates[n-1] || null,
+        Number(total_marks)||25, Number(passing_marks)||10,
+        academic_year||null, req.session.user.id
+      );
+      ids.push(info.lastInsertRowid);
+    }
+  })();
+  res.json({ ok: true, ids });
 });
 router.get('/results', only, (req, res) => {
   const { exam_id, student_id } = req.query;
@@ -397,6 +663,67 @@ router.post('/results', only, (req, res) => {
 router.put('/results/:id/publish', only, (req, res) => {
   db.prepare('UPDATE results SET published=1 WHERE id=?').run(Number(req.params.id));
   res.json({ ok:true });
+});
+
+// Publish / un-publish every result for one exam in a single call
+router.post('/results/publish-exam', only, (req, res) => {
+  const { exam_id, publish } = req.body || {};
+  if (!exam_id) return res.status(400).json({ error: 'exam_id required' });
+  const info = db.prepare('UPDATE results SET published=? WHERE exam_id=?')
+    .run(publish ? 1 : 0, Number(exam_id));
+  res.json({ ok: true, updated: info.changes });
+});
+
+// ── CSV / Excel bulk import of results ────────────────────────────────
+// Accepts JSON: { exam_id, rows: [{ roll_no|student_user_id, marks, grade?, remarks? }] }
+// (parsing happens client-side — we only need structured rows)
+router.post('/results/import', only, (req, res) => {
+  const { exam_id, rows } = req.body || {};
+  if (!exam_id || !Array.isArray(rows)) return res.status(400).json({ error: 'exam_id and rows required' });
+  const exam = db.prepare('SELECT * FROM exam_schedules WHERE id=?').get(Number(exam_id));
+  if (!exam) return res.status(404).json({ error: 'exam not found' });
+
+  const findByRoll = db.prepare(`SELECT u.id FROM users u JOIN student_profiles p ON p.user_id=u.id WHERE p.roll_no=? AND u.role='student'`);
+  const upsert = db.prepare(`INSERT INTO results (student_user_id,exam_id,marks_obtained,grade,remarks,published)
+      VALUES (?,?,?,?,?,0)
+      ON CONFLICT(student_user_id,exam_id) DO UPDATE SET
+        marks_obtained=excluded.marks_obtained, grade=excluded.grade, remarks=excluded.remarks`);
+
+  let ok = 0, skipped = 0;
+  const errors = [];
+  db.transaction(() => {
+    for (const r of rows) {
+      let sid = Number(r.student_user_id) || null;
+      if (!sid && r.roll_no) {
+        const hit = findByRoll.get(String(r.roll_no).trim());
+        if (hit) sid = hit.id;
+      }
+      if (!sid) { skipped++; errors.push({ row: r, reason: 'student not found' }); continue; }
+      const m = Number(r.marks ?? r.marks_obtained);
+      if (Number.isNaN(m)) { skipped++; errors.push({ row: r, reason: 'marks not numeric' }); continue; }
+      const g = (r.grade && String(r.grade).trim()) || calcGrade(m, exam.total_marks || 100);
+      try {
+        upsert.run(sid, exam.id, m, g, r.remarks || null);
+        ok++;
+      } catch (e) {
+        skipped++;
+        errors.push({ row: r, reason: e.message });
+      }
+    }
+  })();
+  res.json({ ok: true, imported: ok, skipped, errors: errors.slice(0, 20) });
+});
+
+// Student roster for a given exam — used by CSV import UI to suggest roll numbers
+router.get('/results/roster/:exam_id', only, (req, res) => {
+  const exam = db.prepare('SELECT * FROM exam_schedules WHERE id=?').get(Number(req.params.exam_id));
+  if (!exam) return res.status(404).json({ error: 'exam not found' });
+  const q = `SELECT u.id AS student_user_id, u.full_name, p.roll_no, p.mbbs_year,
+                    r.marks_obtained, r.grade, r.published
+             FROM users u LEFT JOIN student_profiles p ON p.user_id=u.id
+             LEFT JOIN results r ON r.student_user_id=u.id AND r.exam_id=?
+             WHERE u.role='student' ORDER BY p.mbbs_year,p.roll_no,u.full_name`;
+  res.json({ exam, students: db.prepare(q).all(exam.id) });
 });
 
 function calcGrade(m, total) {
@@ -959,21 +1286,104 @@ router.get('/backup', only, (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════
-// TIMETABLE
+// TIME SCHEDULE MASTER  (reusable period slots used by Timetable)
+// ═══════════════════════════════════════════════════════════════════
+router.get('/time-schedule', only, (req, res) => {
+  const { academic_year } = req.query;
+  let sql = 'SELECT * FROM time_schedule WHERE 1=1';
+  const a = [];
+  if (academic_year) { sql += ' AND academic_year=?'; a.push(academic_year); }
+  sql += ' ORDER BY period_no';
+  res.json({ items: db.prepare(sql).all(...a) });
+});
+router.post('/time-schedule', only, (req, res) => {
+  const { period_no, label, start_time, end_time, kind, academic_year } = req.body || {};
+  if (!period_no || !start_time || !end_time) return res.status(400).json({ error: 'period_no, start_time, end_time required' });
+  try {
+    const info = db.prepare(`INSERT INTO time_schedule
+        (period_no,label,start_time,end_time,kind,academic_year) VALUES (?,?,?,?,?,?)`)
+      .run(Number(period_no), label || null, start_time, end_time, kind || 'class', academic_year || null);
+    res.json({ ok: true, id: info.lastInsertRowid });
+  } catch (e) { res.status(409).json({ error: e.message }); }
+});
+router.put('/time-schedule/:id', only, (req, res) => {
+  const allow = ['period_no','label','start_time','end_time','kind','academic_year'];
+  const sets = [], vals = [];
+  for (const k of allow) if (k in req.body) { sets.push(`${k}=?`); vals.push(req.body[k] === '' ? null : req.body[k]); }
+  if (!sets.length) return res.json({ ok:true });
+  vals.push(Number(req.params.id));
+  db.prepare(`UPDATE time_schedule SET ${sets.join(',')} WHERE id=?`).run(...vals);
+  res.json({ ok: true });
+});
+router.delete('/time-schedule/:id', only, (req, res) => {
+  db.prepare('DELETE FROM time_schedule WHERE id=?').run(Number(req.params.id));
+  res.json({ ok: true });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// TIMETABLE  (batch × day × slot → subject + faculty + room)
 // ═══════════════════════════════════════════════════════════════════
 router.get('/timetable', only, (req, res) => {
-  const { batch_id } = req.query;
-  let sql=`SELECT t.*,u.full_name AS faculty_name FROM timetable t LEFT JOIN users u ON u.id=t.faculty_id WHERE 1=1`;
-  const a=[];
-  if (batch_id) { sql+=' AND t.batch_id=?'; a.push(Number(batch_id)); }
-  sql+=' ORDER BY t.day,t.period';
+  const { batch_id, academic_year, day } = req.query;
+  let sql = `SELECT t.*, u.full_name AS faculty_name,
+                b.name AS batch_name, b.code AS batch_code,
+                ts.period_no, ts.label AS slot_label,
+                ts.start_time AS slot_start, ts.end_time AS slot_end, ts.kind AS slot_kind
+             FROM timetable t
+             LEFT JOIN users u          ON u.id=t.faculty_id
+             LEFT JOIN batches b        ON b.id=t.batch_id
+             LEFT JOIN time_schedule ts ON ts.id=t.schedule_slot_id
+             WHERE 1=1`;
+  const a = [];
+  if (batch_id)      { sql += ' AND t.batch_id=?'; a.push(Number(batch_id)); }
+  if (academic_year) { sql += ' AND (t.academic_year=? OR t.academic_year IS NULL)'; a.push(academic_year); }
+  if (day)           { sql += ' AND t.day=?'; a.push(day); }
+  sql += ` ORDER BY CASE t.day
+             WHEN 'Mon' THEN 1 WHEN 'Tue' THEN 2 WHEN 'Wed' THEN 3
+             WHEN 'Thu' THEN 4 WHEN 'Fri' THEN 5 WHEN 'Sat' THEN 6
+             WHEN 'Sun' THEN 7 ELSE 8 END, COALESCE(ts.period_no, t.period)`;
   res.json({ items: db.prepare(sql).all(...a) });
 });
 router.post('/timetable', only, (req, res) => {
-  const { batch_id, day, period, start_time, end_time, course_code, faculty_id, room } = req.body||{};
-  if (!day||!period) return res.status(400).json({ error: 'day and period required' });
-  const info = db.prepare('INSERT INTO timetable (batch_id,day,period,start_time,end_time,course_code,faculty_id,room) VALUES (?,?,?,?,?,?,?,?)').run(batch_id?Number(batch_id):null,day,Number(period),start_time||null,end_time||null,course_code||null,faculty_id?Number(faculty_id):null,room||null);
-  res.json({ ok:true, id: info.lastInsertRowid });
+  const { batch_id, day, schedule_slot_id, period, start_time, end_time,
+          course_code, faculty_id, room, academic_year, section_type } = req.body || {};
+  if (!day) return res.status(400).json({ error: 'day required' });
+
+  // Resolve slot: if schedule_slot_id provided, fetch period/start/end from master
+  let slot = null;
+  if (schedule_slot_id) slot = db.prepare('SELECT * FROM time_schedule WHERE id=?').get(Number(schedule_slot_id));
+  if (!slot && !period) return res.status(400).json({ error: 'schedule_slot_id or period required' });
+
+  const info = db.prepare(`INSERT INTO timetable
+      (batch_id,day,period,start_time,end_time,course_code,faculty_id,room,
+       schedule_slot_id,academic_year,section_type)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(
+    batch_id ? Number(batch_id) : null,
+    day,
+    slot ? slot.period_no : Number(period),
+    slot ? slot.start_time : (start_time || null),
+    slot ? slot.end_time   : (end_time   || null),
+    course_code || null,
+    faculty_id ? Number(faculty_id) : null,
+    room || null,
+    slot ? slot.id : null,
+    academic_year || null,
+    section_type || null
+  );
+  res.json({ ok: true, id: info.lastInsertRowid });
+});
+router.put('/timetable/:id', only, (req, res) => {
+  const allow = ['batch_id','day','schedule_slot_id','period','start_time','end_time',
+                 'course_code','faculty_id','room','academic_year','section_type'];
+  const sets = [], vals = [];
+  for (const k of allow) if (k in req.body) {
+    sets.push(`${k}=?`);
+    vals.push(req.body[k] === '' ? null : req.body[k]);
+  }
+  if (!sets.length) return res.json({ ok: true });
+  vals.push(Number(req.params.id));
+  db.prepare(`UPDATE timetable SET ${sets.join(',')} WHERE id=?`).run(...vals);
+  res.json({ ok: true });
 });
 router.delete('/timetable/:id', only, (req, res) => {
   db.prepare('DELETE FROM timetable WHERE id=?').run(Number(req.params.id));
@@ -998,8 +1408,59 @@ router.post('/permissions', only, (req, res) => {
 // LECTURES
 // ═══════════════════════════════════════════════════════════════════
 router.get('/lectures', only, (req, res) => {
-  const rows = db.prepare(`SELECT l.*,u.full_name AS faculty_name,b.name AS batch_name FROM lectures l LEFT JOIN users u ON u.id=l.faculty_id LEFT JOIN batches b ON b.id=l.batch_id ORDER BY l.lecture_date DESC LIMIT 100`).all();
+  const rows = db.prepare(`
+    SELECT l.*,
+           u.full_name AS faculty_name,
+           b.name      AS batch_name,
+           c.name      AS subject_name,
+           c.code      AS subject_code
+    FROM lectures l
+    LEFT JOIN users    u ON u.id   = l.faculty_id
+    LEFT JOIN batches  b ON b.id   = l.batch_id
+    LEFT JOIN courses  c ON c.code = l.course_code
+    ORDER BY l.lecture_date DESC, l.start_time DESC
+    LIMIT 200
+  `).all();
   res.json({ items: rows });
+});
+
+router.post('/lectures', only, (req, res) => {
+  const {
+    title, course_code, faculty_id, batch_id, lecture_date,
+    start_time, end_time, topic, description, recording_url, notes,
+  } = req.body || {};
+  if (!title || !lecture_date)
+    return res.status(400).json({ error: 'title and lecture_date are required' });
+
+  const info = db.prepare(`
+    INSERT INTO lectures
+      (title, course_code, faculty_id, batch_id, lecture_date,
+       start_time, end_time, topic, description, recording_url, notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    title, course_code || null,
+    faculty_id ? Number(faculty_id) : null,
+    batch_id   ? Number(batch_id)   : null,
+    lecture_date, start_time || null, end_time || null,
+    topic || null, description || null, recording_url || null, notes || null,
+  );
+  res.json({ ok: true, id: info.lastInsertRowid });
+});
+
+router.put('/lectures/:id', only, (req, res) => {
+  const allow = ['title','course_code','faculty_id','batch_id','lecture_date',
+                 'start_time','end_time','topic','description','recording_url','notes'];
+  const sets = [], vals = [];
+  for (const k of allow) if (k in (req.body || {})) { sets.push(`${k}=?`); vals.push(req.body[k]); }
+  if (!sets.length) return res.status(400).json({ error: 'nothing to update' });
+  vals.push(Number(req.params.id));
+  db.prepare(`UPDATE lectures SET ${sets.join(',')} WHERE id=?`).run(...vals);
+  res.json({ ok: true });
+});
+
+router.delete('/lectures/:id', only, (req, res) => {
+  db.prepare('DELETE FROM lectures WHERE id=?').run(Number(req.params.id));
+  res.json({ ok: true });
 });
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1076,6 +1537,117 @@ router.put('/clinical-postings/:id', only, (req, res) => {
 router.delete('/clinical-postings/:id', only, (req, res) => {
   db.prepare('DELETE FROM clinical_postings WHERE id=?').run(Number(req.params.id));
   logActivity(req.session.user.id, 'DELETE', 'clinical_posting', Number(req.params.id));
+  res.json({ ok: true });
+});
+
+// Status transition (scheduled → ongoing → completed / cancelled)
+router.put('/clinical-postings/:id/status', only, (req, res) => {
+  const { status, notes } = req.body || {};
+  const allowed = ['scheduled','ongoing','completed','cancelled','conducted'];
+  if (!allowed.includes(status)) return res.status(400).json({ error: 'invalid status' });
+  const existing = db.prepare('SELECT notes FROM clinical_postings WHERE id=?').get(Number(req.params.id));
+  if (!existing) return res.status(404).json({ error: 'not found' });
+  const newNotes = notes
+    ? (existing.notes ? existing.notes + '\n' : '') + `[${new Date().toISOString().slice(0,16)}] ${status}: ${notes}`
+    : existing.notes;
+  db.prepare('UPDATE clinical_postings SET status=?, notes=? WHERE id=?')
+    .run(status, newNotes, Number(req.params.id));
+  logActivity(req.session.user.id, 'STATUS', 'clinical_posting', Number(req.params.id), status);
+  res.json({ ok: true });
+});
+
+// Batch-level assignment: create one posting row per student in a batch
+router.post('/clinical-postings/assign-batch', only, (req, res) => {
+  const { batch_id, department_id, start_date, end_date, ward, shift, supervisor_id, notes } = req.body || {};
+  if (!batch_id || !department_id || !start_date || !end_date)
+    return res.status(400).json({ error: 'batch_id, department_id, start_date, end_date required' });
+  const dept = db.prepare('SELECT name FROM departments WHERE id=?').get(Number(department_id));
+  const students = db.prepare(`SELECT student_user_id FROM batch_students WHERE batch_id=?`).all(Number(batch_id));
+  if (!students.length) return res.status(400).json({ error: 'batch has no students' });
+  const ins = db.prepare(`INSERT INTO clinical_postings
+      (batch_id,student_user_id,department_id,department,ward,shift,start_date,end_date,supervisor_id,status,notes)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?)`);
+  let created = 0;
+  db.transaction(() => {
+    for (const s of students) {
+      ins.run(
+        Number(batch_id), s.student_user_id, Number(department_id),
+        dept?.name || null, ward || null, shift || 'morning',
+        start_date, end_date,
+        supervisor_id ? Number(supervisor_id) : null,
+        'scheduled', notes || null
+      );
+      created++;
+    }
+  })();
+  res.json({ ok: true, created });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// ALLOCATIONS  (generic "assign a thing to batch/student/faculty")
+// ═══════════════════════════════════════════════════════════════════
+router.get('/allocations', only, (req, res) => {
+  const { category, status, assignee_type, batch_id, assignee_id } = req.query;
+  let sql = `SELECT a.*,
+      b.code AS batch_code, b.name AS batch_name,
+      u.full_name AS assignee_name, u.username AS assignee_username,
+      creator.full_name AS created_by_name
+      FROM allocations a
+      LEFT JOIN batches b  ON b.id=a.batch_id OR (a.assignee_type='batch' AND b.id=a.assignee_id)
+      LEFT JOIN users   u  ON a.assignee_type IN ('student','faculty') AND u.id=a.assignee_id
+      LEFT JOIN users   creator ON creator.id=a.created_by
+      WHERE 1=1`;
+  const params = [];
+  if (category)      { sql += ' AND a.category=?';      params.push(category); }
+  if (status)        { sql += ' AND a.status=?';        params.push(status); }
+  if (assignee_type) { sql += ' AND a.assignee_type=?'; params.push(assignee_type); }
+  if (batch_id)      { sql += ' AND a.batch_id=?';      params.push(Number(batch_id)); }
+  if (assignee_id)   { sql += ' AND a.assignee_id=?';   params.push(Number(assignee_id)); }
+  sql += ' ORDER BY a.created_at DESC LIMIT 500';
+  res.json({ items: db.prepare(sql).all(...params) });
+});
+
+router.post('/allocations', only, (req, res) => {
+  const { category = 'task', title, message, assignee_type, assignee_id, batch_id,
+          priority, due_date, status } = req.body || {};
+  if (!title || !assignee_type) return res.status(400).json({ error: 'title and assignee_type required' });
+  const validTypes = ['batch','student','faculty'];
+  if (!validTypes.includes(assignee_type)) return res.status(400).json({ error: 'invalid assignee_type' });
+  if (assignee_type === 'batch' && !assignee_id && !batch_id)
+    return res.status(400).json({ error: 'batch assignee requires assignee_id (or batch_id)' });
+  if (assignee_type !== 'batch' && !assignee_id)
+    return res.status(400).json({ error: 'assignee_id required' });
+
+  const finalAssigneeId = assignee_type === 'batch'
+    ? Number(assignee_id || batch_id)
+    : Number(assignee_id);
+
+  const info = db.prepare(`INSERT INTO allocations
+      (category,title,message,assignee_type,assignee_id,batch_id,priority,due_date,status,created_by)
+      VALUES (?,?,?,?,?,?,?,?,?,?)`).run(
+    category, title, message || null,
+    assignee_type, finalAssigneeId,
+    batch_id ? Number(batch_id) : null,
+    priority || 'normal', due_date || null,
+    status || 'pending',
+    req.session.user.id
+  );
+  res.json({ ok: true, id: info.lastInsertRowid });
+});
+
+router.put('/allocations/:id', only, (req, res) => {
+  const allow = ['category','title','message','assignee_type','assignee_id','batch_id',
+                 'priority','due_date','status'];
+  const sets = [], vals = [];
+  for (const k of allow) if (k in req.body) { sets.push(`${k}=?`); vals.push(req.body[k] === '' ? null : req.body[k]); }
+  if (!sets.length) return res.json({ ok: true });
+  vals.push(Number(req.params.id));
+  db.prepare(`UPDATE allocations SET ${sets.join(',')} WHERE id=?`).run(...vals);
+  res.json({ ok: true });
+});
+
+router.delete('/allocations/:id', only, (req, res) => {
+  db.prepare('DELETE FROM allocations WHERE id=?').run(Number(req.params.id));
   res.json({ ok: true });
 });
 
