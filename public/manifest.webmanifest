@@ -1,0 +1,26 @@
+{
+  "name": "JJMMC ERP — J.J.M. Medical College, Davangere",
+  "short_name": "JJMMC ERP",
+  "description": "Medical-college ERP for students, faculty, principal, parents and admin. Works as an installable app on phone and desktop.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui", "browser"],
+  "background_color": "#0b5240",
+  "theme_color": "#0b5240",
+  "orientation": "any",
+  "lang": "en-IN",
+  "dir": "ltr",
+  "categories": ["education", "medical", "productivity"],
+  "icons": [
+    { "src": "/icons/icon-192.png",          "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png",          "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Login",    "short_name": "Login",    "url": "/login.html",   "description": "Open the login page" },
+    { "name": "About",    "short_name": "About",    "url": "/#about",       "description": "Jump to About" },
+    { "name": "Contact",  "short_name": "Contact",  "url": "/#contact",     "description": "Jump to Contact" }
+  ]
+}

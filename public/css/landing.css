@@ -549,3 +549,114 @@ a { color: inherit; text-decoration: none; }
   .hero-stats { grid-template-columns: repeat(2, 1fr); gap: 14px; padding: 16px; }
   .contact-bar { gap: 10px; padding: 12px 18px; font-size: 12px; flex-direction: column; }
 }
+
+/* ═════════════════════════════════════════════════════════════════
+   PWA install button + iOS Add-to-Home-Screen instructions modal
+   ═════════════════════════════════════════════════════════════════ */
+
+.hidden { display: none !important; }
+
+/* Install button inside the sticky top nav */
+.nav-install {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 16px; border-radius: 999px;
+  font-size: 14px; font-weight: 600; cursor: pointer;
+  background: rgba(11, 124, 102, .1);
+  border: 1px solid rgba(11, 124, 102, .25);
+  color: var(--c-primary-dk);
+  transition: all .2s ease;
+}
+.nav-install:hover {
+  background: rgba(11, 124, 102, .18);
+  border-color: rgba(11, 124, 102, .4);
+  transform: translateY(-1px);
+}
+.nav.scrolled .nav-install {
+  background: rgba(11, 124, 102, .12);
+}
+
+/* Install button in the hero CTA row */
+.hero-install {
+  display: inline-flex !important; align-items: center;
+}
+
+/* On small screens the nav install button hides — the hero one takes over */
+@media (max-width: 900px) {
+  .nav-install { display: none !important; }
+}
+
+/* ── iOS install-instructions modal ── */
+.ios-install-modal {
+  position: fixed; inset: 0; z-index: 9999;
+  display: flex; align-items: flex-end; justify-content: center;
+  padding: 0 16px 16px;
+  background: rgba(6, 20, 17, .55);
+  backdrop-filter: blur(4px);
+  animation: ios-fade-in .25s ease forwards;
+}
+.ios-install-modal[hidden] { display: none !important; }
+@keyframes ios-fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+.ios-install-card {
+  position: relative;
+  width: 100%; max-width: 440px;
+  background: #fff; color: var(--c-ink);
+  border-radius: 22px;
+  padding: 28px 26px 26px;
+  box-shadow: 0 -20px 60px rgba(0,0,0,.35);
+  animation: ios-slide-up .32s cubic-bezier(.2, .9, .3, 1.1) forwards;
+}
+@keyframes ios-slide-up {
+  from { transform: translateY(24px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+.ios-close {
+  position: absolute; top: 10px; right: 12px;
+  width: 34px; height: 34px; border-radius: 50%;
+  background: #f1f5f4; border: 0; cursor: pointer;
+  color: var(--c-ink-2); font-size: 22px; line-height: 1;
+}
+.ios-close:hover { background: #e4ecea; }
+.ios-app-icon {
+  width: 64px; height: 64px; border-radius: 16px;
+  box-shadow: 0 6px 16px rgba(0,0,0,.15);
+  margin-bottom: 14px;
+}
+.ios-install-card h3 {
+  margin: 0 0 6px; font-size: 20px; font-weight: 700;
+  letter-spacing: -.2px; color: var(--c-ink);
+}
+.ios-sub {
+  margin: 0 0 18px; color: var(--c-ink-2); font-size: 14.5px; line-height: 1.45;
+}
+.ios-steps {
+  list-style: none; counter-reset: step;
+  margin: 0 0 20px; padding: 0;
+}
+.ios-steps li {
+  counter-increment: step;
+  position: relative;
+  padding: 12px 14px 12px 46px;
+  margin-bottom: 8px;
+  background: #f6faf9;
+  border: 1px solid var(--c-line);
+  border-radius: 12px;
+  font-size: 14.5px; line-height: 1.45;
+  color: var(--c-ink);
+}
+.ios-steps li::before {
+  content: counter(step);
+  position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+  width: 24px; height: 24px; border-radius: 50%;
+  background: var(--c-primary); color: #fff;
+  display: grid; place-items: center;
+  font-size: 12px; font-weight: 700;
+}
+.ios-install-card .btn { width: 100%; justify-content: center; }
+
+/* Centre the modal on larger screens */
+@media (min-width: 640px) {
+  .ios-install-modal { align-items: center; padding: 20px; }
+}
+
+body.modal-open { overflow: hidden; }

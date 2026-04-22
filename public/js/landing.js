@@ -111,4 +111,89 @@
         }
       }).catch(() => {});
   } catch (_) { /* silent */ }
+
+  // ═════════════════════════════════════════════════════════════════
+  //  PWA — Service worker + install prompt
+  // ═════════════════════════════════════════════════════════════════
+
+  // Register the service worker (enables launch-from-home-screen & offline).
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => { /* silent */ });
+    });
+  }
+
+  // ── Install button wiring ──
+  // Chrome/Edge/Samsung browsers fire beforeinstallprompt — we capture the
+  // event, reveal our buttons, and replay it on click. Safari on iOS has no
+  // such API, so we detect iOS and show step-by-step instructions instead.
+  const navInstall   = document.getElementById('installBtn');
+  const heroInstall  = document.getElementById('heroInstallBtn');
+  const iosModal     = document.getElementById('iosInstallModal');
+  const iosClose     = document.getElementById('iosInstallClose');
+  const iosOk        = document.getElementById('iosInstallOk');
+  let deferredPrompt = null;
+
+  const isStandalone =
+    window.matchMedia('(display-mode: standalone)').matches ||
+    window.navigator.standalone === true;        // iOS Safari flag
+
+  const ua        = navigator.userAgent || '';
+  const isIOS     = /iPad|iPhone|iPod/.test(ua) || (/Macintosh/.test(ua) && 'ontouchend' in document);
+  const isSafari  = /^((?!chrome|android|crios|fxios).)*safari/i.test(ua);
+  const isIOSSafari = isIOS && isSafari;
+
+  function showInstallBtns() {
+    navInstall && navInstall.classList.remove('hidden');
+    heroInstall && heroInstall.classList.remove('hidden');
+  }
+  function hideInstallBtns() {
+    navInstall && navInstall.classList.add('hidden');
+    heroInstall && heroInstall.classList.add('hidden');
+  }
+
+  // Android/Desktop install prompt
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    if (!isStandalone) showInstallBtns();
+  });
+
+  // If iOS Safari & not already installed, show our custom install button
+  // that opens an instructions modal (Apple blocks programmatic install).
+  if (isIOSSafari && !isStandalone) showInstallBtns();
+
+  async function handleInstallClick() {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      deferredPrompt = null;
+      if (outcome === 'accepted') hideInstallBtns();
+      return;
+    }
+    if (isIOSSafari && iosModal) {
+      iosModal.hidden = false;
+      document.body.classList.add('modal-open');
+    }
+  }
+
+  navInstall  && navInstall.addEventListener('click', handleInstallClick);
+  heroInstall && heroInstall.addEventListener('click', handleInstallClick);
+
+  function closeIosModal() {
+    if (!iosModal) return;
+    iosModal.hidden = true;
+    document.body.classList.remove('modal-open');
+  }
+  iosClose && iosClose.addEventListener('click', closeIosModal);
+  iosOk    && iosOk.addEventListener('click', closeIosModal);
+  iosModal && iosModal.addEventListener('click', (e) => {
+    if (e.target === iosModal) closeIosModal();
+  });
+
+  // Hide buttons once installed (the `appinstalled` event fires once).
+  window.addEventListener('appinstalled', () => {
+    deferredPrompt = null;
+    hideInstallBtns();
+  });
 })();

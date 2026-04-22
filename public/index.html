@@ -5,6 +5,26 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>JJMMC — J.J.M. Medical College, Davangere</title>
   <meta name="description" content="J.J.M. Medical College, Davangere — MBBS &amp; Postgraduate medical education, teaching hospital, 23 departments, RGUHS-affiliated, NMC-recognised. Established 1965." />
+
+  <!-- ─── PWA / Installable-app metadata ─── -->
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#0b5240" />
+  <meta name="color-scheme" content="light dark" />
+
+  <!-- iOS "Add to Home Screen" -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="JJMMC ERP" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
+  <link rel="apple-touch-icon" sizes="152x152" href="/icons/apple-touch-icon-152.png" />
+  <link rel="apple-touch-icon" sizes="120x120" href="/icons/apple-touch-icon-120.png" />
+
+  <!-- Desktop browser tab / favicon -->
+  <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16.png" />
+  <link rel="icon" type="image/svg+xml" href="/images/logo.svg" />
+
   <link rel="stylesheet" href="/css/landing.css" />
 </head>
 <body>
@@ -25,6 +45,10 @@
       <a href="#life">Campus Life</a>
       <a href="#contact">Contact</a>
     </nav>
+    <button type="button" class="btn btn-ghost nav-install hidden" id="installBtn" aria-label="Install app">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+      <span>Install App</span>
+    </button>
     <a href="/login.html" class="btn btn-primary nav-cta">Login →</a>
     <button class="hamburger" aria-label="Open menu" id="hamburger">☰</button>
   </header>
@@ -45,6 +69,10 @@
         </p>
         <div class="hero-ctas">
           <a href="/login.html" class="btn btn-primary btn-lg">Enter Portal</a>
+          <button type="button" class="btn btn-ghost-light btn-lg hero-install hidden" id="heroInstallBtn">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;margin-right:6px"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+            Install App
+          </button>
           <a href="#about" class="btn btn-ghost btn-lg">Explore Campus ↓</a>
         </div>
 
@@ -259,6 +287,26 @@
       </symbol>
     </defs>
   </svg>
+
+  <!-- ─── iOS install instructions modal (shown only on iPhone/iPad Safari) ─── -->
+  <div class="ios-install-modal" id="iosInstallModal" role="dialog" aria-modal="true" aria-labelledby="iosInstallTitle" hidden>
+    <div class="ios-install-card">
+      <button type="button" class="ios-close" aria-label="Close" id="iosInstallClose">&times;</button>
+      <img src="/icons/apple-touch-icon.png" alt="" class="ios-app-icon" />
+      <h3 id="iosInstallTitle">Install JJMMC ERP</h3>
+      <p class="ios-sub">Add this app to your home screen for a full-screen, app-like experience.</p>
+      <ol class="ios-steps">
+        <li>
+          Tap the <strong>Share</strong> button
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" x2="12" y1="2" y2="15"/></svg>
+          in Safari's toolbar.
+        </li>
+        <li>Scroll down and choose <strong>Add to Home Screen</strong>.</li>
+        <li>Tap <strong>Add</strong>. The JJMMC icon appears on your home screen.</li>
+      </ol>
+      <button type="button" class="btn btn-primary btn-lg" id="iosInstallOk">Got it</button>
+    </div>
+  </div>
 
   <script src="/js/landing.js" defer></script>
 </body>
